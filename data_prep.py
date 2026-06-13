@@ -11,10 +11,6 @@ def prep_data(Y, w, z, C, N, T, K, L):
 
     Y = Y[L:, :, :]  # (T, C, N)
 
-    y = np.zeros((C, T*N))
-    for c in range(C):
-        y[c] = Y[:, c, :].flatten(order='F')
-
     z = z[L:]
     w = w[L:]
     z = z.reshape(-1, 1)  # (T, 1)
