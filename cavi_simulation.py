@@ -4,17 +4,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 
-# ── Initialise variational parameters ────────────────────────────────────────
-def initialise_params(T, N):
-    params = {
-        'mu_lambda_inv': 1e4,
-        'mu_sigma_inv': [T * np.eye(N) for c in range(C)]
-    }
-    return params
 
 # ── CAVI update functions ─────────────────────────────────────────────────────
 
-def calc_V_delta(mu_lambda_inv, mu_sigma_inv, Lambda_inv, Lambda_inv_sum, XX, XZ, ZZ, ):
+def calc_V_delta(mu_lambda_inv, mu_sigma_inv, XX, XZ, ZZ, Lambda_inv, Lambda_inv_sum, C, N, K):
     total = mu_lambda_inv * Lambda_inv_sum
     for c in range(C):
         top_left = mu_lambda_inv * Lambda_inv[c] + np.kron(mu_sigma_inv[c], XX[c])
@@ -28,13 +21,13 @@ def calc_V_delta(mu_lambda_inv, mu_sigma_inv, Lambda_inv, Lambda_inv_sum, XX, XZ
         total -= mu_lambda_inv**2 * (Lambda_inv[c] @ H_c[:N*K, :N*K] @ Lambda_inv[c])
     return np.linalg.inv(total)
 
-def calc_mu_delta(V_delta, mu_sigma_inv):
+def calc_mu_delta(V_delta, mu_sigma_inv, y, F, S_delta, Pc, C):
     sum = 0
     for c in range(C):
         sum += S_delta[c].T @ Pc.T @ np.kron(mu_sigma_inv[c], F[c].T) @ y[c]
     return V_delta @ sum
 
-def calc_S_bar_sigma(mu_delta, V_delta):
+def calc_S_bar_sigma(mu_delta, V_delta, Y, F, S_delta, Pc, C, N, K):
     S_bar_sigma = [np.eye(N)] * C
     for c in range(C):
         mu_deltac = S_delta[c] @ mu_delta
@@ -53,7 +46,7 @@ def calc_S_bar_sigma(mu_delta, V_delta):
         S_bar_sigma[c] = (Y[:, c, :] - F[c] @ mu_Gc).T @ (Y[:, c, :] - F[c] @ mu_Gc) + Omega_Gc
     return S_bar_sigma
 
-def calc_ELBO(V_delta, s_bar, v_bar, S_bar_sigma):
+def calc_ELBO(V_delta, s_bar, v_bar, S_bar_sigma, T):
     _, logdet_V = np.linalg.slogdet(V_delta)
     elbo = logdet_V - s_bar * np.log(v_bar) / 2
     for c in range(C):
@@ -63,15 +56,36 @@ def calc_ELBO(V_delta, s_bar, v_bar, S_bar_sigma):
 
 # ── CAVI loop ─────────────────────────────────────────────────────────────────
 
-epsilon = 1e-4
-ELBO = []
-s_bar = C*N*K -1
-while len(ELBO) < 10 or ELBO[-1] - ELBO[-2] > epsilon:
-    V_delta = calc_V_delta(mu_lambda_inv, mu_sigma_inv)
-    mu_delta = calc_mu_delta(V_delta, mu_sigma_inv)
-    v_bar = mu_delta.T @ Big_S @ mu_delta + np.trace(Big_S @ V_delta)
-    mu_lambda_inv = s_bar/v_bar
-    S_bar_sigma = calc_S_bar_sigma(mu_delta, V_delta)
-    mu_sigma_inv = [T * np.linalg.inv(S_bar_sigma[c]) for c in range(C)]
-    ELBO.append(calc_ELBO(V_delta, s_bar, v_bar, S_bar_sigma))
+def run_cavi(cavi_pack, C, N, K, T):
+    Y, F, XX, XZ, ZZ, S_delta, Pc, Big_S, Lambda_inv, Lambda_inv_sum = cavi_pack.values()
+
+    y = np.zeros((C, T*N))
+    for c in range(C):
+        y[c] = Y[:, c, :].flatten(order='F')
+    
+    mu_lambda_inv= 1e4,
+    mu_sigma_inv[T * np.eye(N) for c in range(C)]
+
+    epsilon = 1e-4
+    ELBO = []
+    s_bar = C*N*K -1
+    while len(ELBO) < 10 or ELBO[-1] - ELBO[-2] > epsilon:
+        V_delta = calc_V_delta(mu_lambda_inv, mu_sigma_inv, XX, XZ, ZZ, Lambda_inv, Lambda_inv_sum, C, N, K)
+        mu_delta = calc_mu_delta(V_delta, mu_sigma_inv, y, F, S_delta, Pc, C)
+        v_bar = mu_delta.T @ Big_S @ mu_delta + np.trace(Big_S @ V_delta)
+        mu_lambda_inv = s_bar/v_bar
+        S_bar_sigma = calc_S_bar_sigma(mu_delta, V_delta, Y, F, S_delta, Pc, C, N, K)
+        mu_sigma_inv = [T * np.linalg.inv(S_bar_sigma[c]) for c in range(C)]
+        ELBO.append(calc_ELBO(V_delta, s_bar, v_bar, S_bar_sigma))
+
+    params = {
+        'mu_delta': mu_delta,
+        'V_delta': V_delta,
+        'v_bar': v_bar,
+        's_bar': s_bar,
+        'S_bar_sigma': S_bar_sigma
+    }
+    
+    return params, ELBO
+
 
