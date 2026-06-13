@@ -1,3 +1,7 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+
 # ── Define relevant matrices ───────────────────────────────────────────────
 
 def prep_data(Y, w, z, C, N, T, K, L):
@@ -27,18 +31,7 @@ def prep_data(Y, w, z, C, N, T, K, L):
     size_delta = size_beta0 + C * size_deltac
 
     # starting index of each block in delta
-    idx_beta0 = 0
-    idx_deltac = [size_beta0 + c * size_deltac for c in range(C)]  # start of delta_c
-    idx_betac  = [idx_deltac[c] for c in range(C)]                 # start of beta_c (same)
-    # selection matrices — S @ delta extracts the relevant block
-    def selection_matrix(size_delta, start, block_size):
-        S = np.zeros((block_size, size_delta))
-        S[:, start:start+block_size] = np.eye(block_size)
-        return S
-
-    S0      = selection_matrix(size_delta, idx_beta0, size_beta0)
-    S_beta  = [selection_matrix(size_delta, idx_betac[c],  size_betac)  for c in range(C)]
-    S_delta = [selection_matrix(size_delta, idx_deltac[c], size_deltac) for c in range(C)]
+    idx_deltac = [size_beta0 + c * size_deltac for c in range(C)]
 
     Pc = np.zeros((size_deltac, size_deltac))
 
@@ -67,11 +60,16 @@ def prep_data(Y, w, z, C, N, T, K, L):
 
     Big_S = np.zeros((size_delta, size_delta))
     for c in range(C):
-        diff = S_beta[c] - S0
-        Big_S += diff.T @ Lambda_inv[c] @ diff
+        b0 = slice(0, size_beta0)
+        bc = slice(idx_deltac[c], idx_deltac[c] + size_betac)
+        Big_S[b0, b0] += Lambda_inv[c]
+        Big_S[bc, bc] += Lambda_inv[c]
+        Big_S[b0, bc] -= Lambda_inv[c]
+        Big_S[bc, b0] -= Lambda_inv[c]
 
-    cavi_pack = {'Y': Y, 'F': F, 'XX': X, 'XZ': XZ, 'ZZ': ZZ, 
-                 'S_delta': S_delta, 'Pc': Pc, 'Big_S': Big_S, 
+    cavi_pack = {'Y': Y, 'F': F, 'XX': XX, 'XZ': XZ, 'ZZ': ZZ,
+                 'idx_deltac': idx_deltac, 'size_deltac': size_deltac,
+                 'Pc': Pc, 'Big_S': Big_S,
                  'Lambda_inv': Lambda_inv, 'Lambda_inv_sum': Lambda_inv_sum}
     gibbs_pack =  {'Y': Y, 'X': X, 'z': z,
                  'Lambda_inv': Lambda_inv, 'Lambda_inv_sum_inv': Lambda_inv_sum_inv}
