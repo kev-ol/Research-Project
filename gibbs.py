@@ -19,10 +19,10 @@ def lambda_sample(beta_c, beta_0, Lambda_inv, C, N, K):
     sample = invgamma.rvs(s_bar/2, scale=v_bar/2)
     return sample
 
-def beta_c_sample(lam, beta_0, Sigma_inv, gamma, y_c, X_c, z, Lambda_inv, N):
-    V_beta_c = np.linalg.inv((1/lam)*Lambda_inv[c] + np.kron(Sigma_inv, (X_c.T @ X_c)))
+def beta_c_sample(lam, beta_0, Sigma_inv, gamma, y_c, X_c, z, Lambda_inv_c, N):
+    V_beta_c = np.linalg.inv((1/lam)*Lambda_inv_c + np.kron(Sigma_inv, (X_c.T @ X_c)))
     r_c = y_c - np.kron(np.eye(N), z) @ gamma
-    mu_beta_c = V_beta_c@((1/lam)*Lambda_inv[c]@beta_0 + np.kron(Sigma_inv, X_c.T) @ r_c)
+    mu_beta_c = V_beta_c@((1/lam)*Lambda_inv_c@beta_0 + np.kron(Sigma_inv, X_c.T) @ r_c)
     sample = np.random.multivariate_normal(mu_beta_c, V_beta_c)
     return sample
 
