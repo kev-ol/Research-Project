@@ -7,8 +7,15 @@ import pandas as pd
 
 # ── CAVI update functions ─────────────────────────────────────────────────────
 
-def calc_V_delta(mu_lambda_inv, mu_sigma_inv, XX, XZ, ZZ, Lambda_inv, Lambda_inv_sum, C, N, K):
+def calc_V_delta(mu_lambda_inv, mu_sigma_inv, XX, XZ, ZZ, size_deltac, Lambda_inv, Lambda_inv_sum, C, N, K):
+    NK = N * K
+    N_z = size_deltac - NK
+    size_c = NK + N_z
+    total_size = NK + C * size_c
+    
     total = mu_lambda_inv * Lambda_inv_sum
+    H = []
+
     for c in range(C):
         top_left = mu_lambda_inv * Lambda_inv[c] + np.kron(mu_sigma_inv[c], XX[c])
         top_right = np.kron(mu_sigma_inv[c], XZ[c])
@@ -17,9 +24,27 @@ def calc_V_delta(mu_lambda_inv, mu_sigma_inv, XX, XZ, ZZ, Lambda_inv, Lambda_inv
 
         H_c_inv = np.block([[top_left, top_right],[bottom_left, bottom_right]])
         H_c = np.linalg.inv(H_c_inv)
+        H.append(H_c)
 
         total -= mu_lambda_inv**2 * (Lambda_inv[c] @ H_c[:N*K, :N*K] @ Lambda_inv[c])
-    return np.linalg.inv(total)
+
+    V_beta0 = np.linalg.inv(total)
+
+    V_delta = np.zeros((total_size, total_size))
+    V_delta[:NK, :NK] = V_beta0
+
+    for c in range(C):
+        row = NK + c * size_c
+        
+        V_dc = H[c] + H[c][:, :NK] @ (mu_lambda_inv**2 * Lambda_inv[c] @ V_beta0 @ Lambda_inv[c]) @ H[c][:NK, :]
+        V_cross = -V_beta0 @ (mu_lambda_inv * Lambda_inv[c] @ H[c][:NK, :])
+
+        V_delta[row:row+size_c, row:row+size_c] = V_dc
+        V_delta[:NK, row:row+size_c] = V_cross
+        V_delta[row:row+size_c, :NK] = V_cross.T
+
+    return V_delta
+
 
 def calc_mu_delta(V_delta, mu_sigma_inv, Y, F, idx_deltac, size_deltac, Pc, C):
     sum = np.zeros(V_delta.shape[0])
@@ -68,7 +93,7 @@ def run_cavi(cavi_pack, C, N, K, T):
     ELBO = []
     s_bar = C*N*K - 1
     while len(ELBO) < 10 or ELBO[-1] - ELBO[-2] > epsilon:
-        V_delta = calc_V_delta(mu_lambda_inv, mu_sigma_inv, XX, XZ, ZZ, Lambda_inv, Lambda_inv_sum, C, N, K)
+        V_delta = calc_V_delta(mu_lambda_inv, mu_sigma_inv, XX, XZ, ZZ, size_deltac, Lambda_inv, Lambda_inv_sum, C, N, K)
         mu_delta = calc_mu_delta(V_delta, mu_sigma_inv, Y, F, idx_deltac, size_deltac, Pc, C)
         v_bar = mu_delta.T @ Big_S @ mu_delta + np.trace(Big_S @ V_delta)
         mu_lambda_inv = s_bar/v_bar
