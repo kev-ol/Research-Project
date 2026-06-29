@@ -134,5 +134,9 @@ def run_gibbs(gibbs_pack, C, N, K, T, n_chains=4, n_steps=10000, n_burnin=2000):
     # Return post-burnin samples pooled across all chains alongside the diagnostics
     post_burnin_samples = {k: np.concatenate([chain[k][n_burnin:] for chain in all_chains_data], axis=0) 
                           for k in all_chains_data[0].keys()}
-
+    post_burnin_samples["delta_c"] = [
+        [np.concatenate([post_burnin_samples["beta_c"][t][c], post_burnin_samples["gamma_c"][t][c]])
+        for c in range(C)]
+        for t in range(len(post_burnin_samples["beta_c"]))
+    ]
     return post_burnin_samples, ess, r_hat

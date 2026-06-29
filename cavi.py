@@ -45,6 +45,23 @@ def calc_V_delta(mu_lambda_inv, mu_sigma_inv, XX, XZ, ZZ, size_deltac, Lambda_in
 
     return V_delta
 
+def calc_V_delta_naive(mu_lambda_inv, mu_sigma_inv, F, Big_S, idx_deltac, size_deltac, Pc, C, N, K):
+    size_beta0 = N * K
+    size_delta = size_beta0 + C * size_deltac
+    
+    precision = mu_lambda_inv * Big_S.copy()
+    
+    for c in range(C):
+        start = idx_deltac[c]
+        FtF = F[c].T @ F[c]  # (K+1, K+1)
+        likelihood_precision = np.kron(mu_sigma_inv[c], FtF)  # (N*(K+1), N*(K+1))
+        
+        # S_deltac places this into the delta_c block, Pc reorders
+        PtLP = Pc.T @ likelihood_precision @ Pc  # (size_deltac, size_deltac)
+        precision[start:start+size_deltac, start:start+size_deltac] += PtLP
+    
+    return np.linalg.inv(precision)
+
 
 def calc_mu_delta(V_delta, mu_sigma_inv, Y, F, idx_deltac, size_deltac, Pc, C):
     sum = np.zeros(V_delta.shape[0])
@@ -92,8 +109,9 @@ def run_cavi(cavi_pack, C, N, K, T):
     epsilon = 1e-4
     ELBO = []
     s_bar = C*N*K - 1
+    iteration = 0
     while len(ELBO) < 10 or ELBO[-1] - ELBO[-2] > epsilon:
-        V_delta = calc_V_delta(mu_lambda_inv, mu_sigma_inv, XX, XZ, ZZ, size_deltac, Lambda_inv, Lambda_inv_sum, C, N, K)
+        V_delta = calc_V_delta_naive(mu_lambda_inv, mu_sigma_inv, F, Big_S, idx_deltac, size_deltac, Pc, C, N, K)
         mu_delta = calc_mu_delta(V_delta, mu_sigma_inv, Y, F, idx_deltac, size_deltac, Pc, C)
         v_bar = mu_delta.T @ Big_S @ mu_delta + np.trace(Big_S @ V_delta)
         mu_lambda_inv = s_bar/v_bar
