@@ -131,7 +131,8 @@ def run_gibbs(gibbs_pack, C, N, K, T, n_chains=4, n_steps=10000, n_burnin=2000):
 
     ess, r_hat = _compute_diagnostics(all_chains_data, n_burnin)
 
-    # Return post-burnin samples from the last chain alongside the diagnostics
-    post_burnin_samples = {k: v[n_burnin:] for k, v in all_chains_data[-1].items()}
+    # Return post-burnin samples pooled across all chains alongside the diagnostics
+    post_burnin_samples = {k: np.concatenate([chain[k][n_burnin:] for chain in all_chains_data], axis=0) 
+                          for k in all_chains_data[0].keys()}
 
     return post_burnin_samples, ess, r_hat
