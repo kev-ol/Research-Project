@@ -101,7 +101,7 @@ def calc_ELBO(V_delta, s_bar, v_bar, S_bar_sigma, T, C):
 # ── CAVI loop ─────────────────────────────────────────────────────────────────
 
 def run_cavi(cavi_pack, C, N, K, T):
-    Y, F, XX, XZ, ZZ, idx_deltac, size_deltac, Pc, Big_S, Lambda_inv, Lambda_inv_sum = cavi_pack.values()
+    Y, F, XX, XZ, ZZ, idx_deltac, size_gammmac, size_deltac, Pc, Big_S, Lambda_inv, Lambda_inv_sum = cavi_pack.values()
 
     mu_lambda_inv = 1e4
     mu_sigma_inv = [T * np.eye(N) for c in range(C)]

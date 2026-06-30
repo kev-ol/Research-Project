@@ -68,7 +68,7 @@ def prep_data(Y, w, z, C, N, T, K, L):
         Big_S[bc, b0] -= Lambda_inv[c]
 
     cavi_pack = {'Y': Y, 'F': F, 'XX': XX, 'XZ': XZ, 'ZZ': ZZ,
-                 'idx_deltac': idx_deltac, 'size_deltac': size_deltac,
+                 'idx_deltac': idx_deltac, 'size_gammac': size_gammac, 'size_deltac': size_deltac,
                  'Pc': Pc, 'Big_S': Big_S,
                  'Lambda_inv': Lambda_inv, 'Lambda_inv_sum': Lambda_inv_sum}
     gibbs_pack =  {'Y': Y, 'X': X, 'z': z,
