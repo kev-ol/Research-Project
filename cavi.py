@@ -67,7 +67,7 @@ def calc_mu_delta(V_delta, mu_sigma_inv, Y, F, idx_deltac, size_deltac, Pc, C):
     sum = np.zeros(V_delta.shape[0])
     for c in range(C):
         start = idx_deltac[c]
-        sum[start : start + size_deltac] += Pc.T @ (F[c].T @ Y[:, c, :] @ mu_sigma_inv[c]).flatten(order='F')
+        sum[start : start + size_deltac] += Pc.T @ (F[c].T @ Y[c, :, :] @ mu_sigma_inv[c]).flatten(order='F')
     return V_delta @ sum
 
 def calc_S_bar_sigma(mu_delta, V_delta, Y, F, idx_deltac, size_deltac, Pc, C, N, K):
@@ -87,7 +87,7 @@ def calc_S_bar_sigma(mu_delta, V_delta, Y, F, idx_deltac, size_deltac, Pc, C, N,
                 Pc_j = Pc[j*(K+1):(j+1)*(K+1), :]
                 Omega_Gc[i, j] = np.trace(FtF @ Pc_i @ V_deltac @ Pc_j.T)
 
-        S_bar_sigma[c] = (Y[:, c, :] - F[c] @ mu_Gc).T @ (Y[:, c, :] - F[c] @ mu_Gc) + Omega_Gc
+        S_bar_sigma[c] = (Y[c, :, :] - F[c] @ mu_Gc).T @ (Y[c, :, :] - F[c] @ mu_Gc) + Omega_Gc
     return S_bar_sigma
 
 def calc_ELBO(V_delta, s_bar, v_bar, S_bar_sigma, T, C):
