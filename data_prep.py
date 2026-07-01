@@ -4,9 +4,7 @@ import pandas as pd
 
 # ── Define relevant matrices ───────────────────────────────────────────────
 
-def prep_data(Y, W, Z1, Z2, C, N, N_w, N_z, T, K, L, L_w, L_z1, L_z2):
-    n_lag_z = len(L_z1)  # == len(L_z2)
-    Z_width = N_z * n_lag_z
+def prep_data(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2):
     
     F = np.zeros((C, T, K+Z_width))
     X = np.zeros((C, T, K))
