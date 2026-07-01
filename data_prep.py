@@ -1,21 +1,22 @@
 import numpy as np
-import matplotlib.pyplot as plt
-import pandas as pd
 
-# ── Define relevant matrices ───────────────────────────────────────────────
+"""Preprocessing Data"""
 
 def prep_data(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2):
     
     F = np.zeros((C, T, K+Z_width))
     X = np.zeros((C, T, K))
     Z = np.zeros((T, Z_width))
-
+    
+    # concatenate non-exchanngeabl prior data lags
     for t in range(L, T+L):
         z_lags = np.concatenate(
             [Z1[t-l] for l in L_z1] +
             [Z2[t-l] for l in L_z2]
         )
         Z[t-L, :] = z_lags
+    
+    # concatenate exchangeable prior data lags
     for c in range(C):
         for t in range(L, T+L):
             y_lags = np.concatenate([Y[c, t-l, :] for l in range(1, L+1)])
@@ -24,11 +25,13 @@ def prep_data(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2):
             X[c, t-L, :] = lags
             F[c, t-L, :] = np.concatenate([lags, Z[t-L, :]])
 
-    Y = Y[:, L:, :]  # (T, C, N)
+    # get rid of extra data used for lags
+    Y = Y[:, L:, :]
     W = W[L:, :]
-    ZZ = Z.T @ Z                                      # (N_z, N_z)
-    XX = np.array([X[c].T @ X[c] for c in range(C)])  # (C, K, K)
-    XZ = np.array([X[c].T @ Z for c in range(C)])     # (C, K, N_z)
+    # define relevant matrices for later use
+    ZZ = Z.T @ Z                  
+    XX = np.array([X[c].T @ X[c] for c in range(C)])
+    XZ = np.array([X[c].T @ Z for c in range(C)])
 
     # block sizes
     size_beta0 = N * K
@@ -40,6 +43,7 @@ def prep_data(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2):
     # starting index of each block in delta
     idx_deltac = [size_beta0 + c * size_deltac for c in range(C)]
 
+    # create reordering matrix
     Pc = np.zeros((size_deltac, size_deltac))
 
     for n in range(N):
@@ -54,6 +58,7 @@ def prep_data(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2):
             row_major_pos = n * Z_width + k
             Pc[N*K + row_major_pos, N*K + col_major_pos] = 1
 
+    # make Lambda for Minnesota prior
     Lambda = np.zeros((C, N*K, N*K))
     for c in range(C):
         var_y = np.var(Y[c, :, :], axis=0)  # (N,)
@@ -66,11 +71,12 @@ def prep_data(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2):
                         for n in range(N) for k in range(K)])
         Lambda[c] = np.diag(diag)
 
-
+    # perform inverses now
     Lambda_inv = np.array([np.diag(1.0 / np.diag(Lambda[c])) for c in range(C)])
     Lambda_inv_sum = np.sum(Lambda_inv, axis=0)
     Lambda_inv_sum_inv = np.diag(1.0 / np.diag(Lambda_inv_sum))
 
+    # define Big_S term to save later calculations
     Big_S = np.zeros((size_delta, size_delta))
     for c in range(C):
         b0 = slice(0, size_beta0)
@@ -80,6 +86,7 @@ def prep_data(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2):
         Big_S[b0, bc] -= Lambda_inv[c]
         Big_S[bc, b0] -= Lambda_inv[c]
 
+    # export packs of what is relevant for each model
     cavi_pack = {'Y': Y, 'F': F, 'XX': XX, 'XZ': XZ, 'ZZ': ZZ,
                  'idx_deltac': idx_deltac, 'size_gammac': size_gammac, 'size_deltac': size_deltac,
                  'Pc': Pc, 'Big_S': Big_S,
