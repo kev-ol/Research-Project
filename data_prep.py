@@ -20,7 +20,7 @@ def prep_data(Y, W, Z1, Z2, C, N, N_w, N_z, T, K, L, L_w, L_z1, L_z2):
         Z[t-L, :] = z_lags
     for c in range(C):
         for t in range(L, T+L):
-            y_lags = np.concatenate([Y[t-l, c, :] for l in range(1, L+1)])
+            y_lags = np.concatenate([Y[c, t-l, :] for l in range(1, L+1)])
             w_lags = np.concatenate([W[t-l] for l in L_w])
             lags = np.concatenate([y_lags, w_lags])
             X[c, t-L, :] = lags
@@ -59,13 +59,15 @@ def prep_data(Y, W, Z1, Z2, C, N, N_w, N_z, T, K, L, L_w, L_z1, L_z2):
     Lambda = np.zeros((C, N*K, N*K))
     for c in range(C):
         var_y = np.var(Y[c, :, :], axis=0)  # (N,)
-        var_w = np.var
-        var_all = np.append(var_y, np.var(w))
-        var_index = [n for l in range(L) for n in range(N)] + [N]
+        var_w = np.var(W, axis=0) 
+        var_all = np.append(var_y, var_w)
+        var_index = ([n for l in range(L) for n in range(N)] +
+                [N + j for l in range(len(L_w)) for j in range(N_w)])
 
         diag = np.array([var_y[n] / var_all[var_index[k]]
                         for n in range(N) for k in range(K)])
         Lambda[c] = np.diag(diag)
+
 
     Lambda_inv = np.array([np.diag(1.0 / np.diag(Lambda[c])) for c in range(C)])
     Lambda_inv_sum = np.sum(Lambda_inv, axis=0)
