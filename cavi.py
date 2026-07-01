@@ -1,12 +1,9 @@
 # Import libraries
 
 import numpy as np
-import matplotlib.pyplot as plt
-import pandas as pd
 
-
-# ── CAVI update functions ─────────────────────────────────────────────────────
-
+"""CAVI Update Functions"""
+# Lee-Wand streamlined version (still to be fixd)
 def calc_V_delta(mu_lambda_inv, mu_sigma_inv, XX, XZ, ZZ, size_deltac, Lambda_inv, Lambda_inv_sum, C, N, K):
     NK = N * K
     N_z = size_deltac - NK
@@ -45,9 +42,9 @@ def calc_V_delta(mu_lambda_inv, mu_sigma_inv, XX, XZ, ZZ, size_deltac, Lambda_in
 
     return V_delta
 
+# basic version currently used
 def calc_V_delta_naive(mu_lambda_inv, mu_sigma_inv, F, Big_S, idx_deltac, size_deltac, Pc, C, N, K):
     size_beta0 = N * K
-    size_delta = size_beta0 + C * size_deltac
     
     precision = mu_lambda_inv * Big_S.copy()
     
@@ -90,26 +87,27 @@ def calc_S_bar_sigma(mu_delta, V_delta, Y, F, idx_deltac, size_deltac, Pc, C, N,
         S_bar_sigma[c] = (Y[c, :, :] - F[c] @ mu_Gc).T @ (Y[c, :, :] - F[c] @ mu_Gc) + Omega_Gc
     return S_bar_sigma
 
+# Use the corrected derivation of ELBO
 def calc_ELBO(V_delta, s_bar, v_bar, S_bar_sigma, T, C):
     _, logdet_V = np.linalg.slogdet(V_delta)
-    elbo = logdet_V - s_bar * np.log(v_bar) / 2
+    elbo = logdet_V / 2 - s_bar * np.log(v_bar) / 2
     for c in range(C):
         _, logdet_S = np.linalg.slogdet(S_bar_sigma[c])
-        elbo -= T * logdet_S
+        elbo -= T * logdet_S / 2
     return elbo
 
-# ── CAVI loop ─────────────────────────────────────────────────────────────────
+"""CAVI Loop"""
 
 def run_cavi(cavi_pack, C, N, K, T):
     Y, F, XX, XZ, ZZ, idx_deltac, size_gammmac, size_deltac, Pc, Big_S, Lambda_inv, Lambda_inv_sum = cavi_pack.values()
 
+    # chosen initialisations
     mu_lambda_inv = 1e4
     mu_sigma_inv = [T * np.eye(N) for c in range(C)]
 
     epsilon = 1e-4
     ELBO = []
     s_bar = C*N*K - 1
-    iteration = 0
     while len(ELBO) < 10 or ELBO[-1] - ELBO[-2] > epsilon:
         V_delta = calc_V_delta_naive(mu_lambda_inv, mu_sigma_inv, F, Big_S, idx_deltac, size_deltac, Pc, C, N, K)
         mu_delta = calc_mu_delta(V_delta, mu_sigma_inv, Y, F, idx_deltac, size_deltac, Pc, C)
