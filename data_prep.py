@@ -4,29 +4,38 @@ import pandas as pd
 
 # ── Define relevant matrices ───────────────────────────────────────────────
 
-def prep_data(Y, w, z, C, N, T, K, L):
-    F = np.zeros((C, T, K+1))
+def prep_data(Y, W, Z1, Z2, C, N, N_w, N_z, T, K, L, L_w, L_z1, L_z2):
+    n_lag_z = len(L_z1)  # == len(L_z2)
+    Z_width = N_z * n_lag_z
+    
+    F = np.zeros((C, T, K+Z_width))
     X = np.zeros((C, T, K))
+    Z = np.zeros((T, Z_width))
+
+    for t in range(L, T+L):
+        z_lags = np.concatenate(
+            [Z1[t-l] for l in L_z1] +
+            [Z2[t-l] for l in L_z2]
+        )
+        Z[t-L, :] = z_lags
     for c in range(C):
         for t in range(L, T+L):
-            lags = np.concatenate([Y[t-1, c, :], Y[t-2, c, :], [w[t-1]]])
+            y_lags = np.concatenate([Y[t-l, c, :] for l in range(1, L+1)])
+            w_lags = np.concatenate([W[t-l] for l in L_w])
+            lags = np.concatenate([y_lags, w_lags])
             X[c, t-L, :] = lags
-            F[c, t-L, :] = np.concatenate([lags, [z[t-1]]])
+            F[c, t-L, :] = np.concatenate([lags, Z[t-L, :]])
 
-    Y = Y[L:, :, :]  # (T, C, N)
-
-    z = z[L:]
-    w = w[L:]
-    z = z.reshape(-1, 1)  # (T, 1)
-    ZZ = z.T @ z
-    XX = np.array([X[c].T @ X[c] for c in range(C)])  # (C, NK, NK)
-    XZ = np.array([X[c].T @ z for c in range(C)])      # (C, NK, N_z)
-
+    Y = Y[:, L:, :]  # (T, C, N)
+    W = W[L:, :]
+    ZZ = Z.T @ Z                                      # (N_z, N_z)
+    XX = np.array([X[c].T @ X[c] for c in range(C)])  # (C, K, K)
+    XZ = np.array([X[c].T @ Z for c in range(C)])     # (C, K, N_z)
 
     # block sizes
     size_beta0 = N * K
     size_betac = N * K
-    size_gammac = N
+    size_gammac = N * Z_width
     size_deltac = size_betac + size_gammac
     size_delta = size_beta0 + C * size_deltac
 
@@ -41,12 +50,16 @@ def prep_data(Y, w, z, C, N, T, K, L):
             row_major_pos = n * K + k
             Pc[row_major_pos, col_major_pos] = 1
 
-    for i in range(N):
-        Pc[N*K + i, N*K + i] = 1
+    for n in range(N):
+        for k in range(Z_width):
+            col_major_pos = k * N + n
+            row_major_pos = n * Z_width + k
+            Pc[N*K + row_major_pos, N*K + col_major_pos] = 1
 
     Lambda = np.zeros((C, N*K, N*K))
     for c in range(C):
-        var_y = np.var(Y[:, c, :], axis=0)  # (N,)
+        var_y = np.var(Y[c, :, :], axis=0)  # (N,)
+        var_w = np.var
         var_all = np.append(var_y, np.var(w))
         var_index = [n for l in range(L) for n in range(N)] + [N]
 
@@ -71,7 +84,7 @@ def prep_data(Y, w, z, C, N, T, K, L):
                  'idx_deltac': idx_deltac, 'size_gammac': size_gammac, 'size_deltac': size_deltac,
                  'Pc': Pc, 'Big_S': Big_S,
                  'Lambda_inv': Lambda_inv, 'Lambda_inv_sum': Lambda_inv_sum}
-    gibbs_pack =  {'Y': Y, 'X': X, 'z': z,
+    gibbs_pack =  {'Y': Y, 'X': X, 'Z': Z,
                  'Lambda_inv': Lambda_inv, 'Lambda_inv_sum_inv': Lambda_inv_sum_inv}
     
     return cavi_pack, gibbs_pack
