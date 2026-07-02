@@ -43,15 +43,13 @@ def calc_V_delta(mu_lambda_inv, mu_sigma_inv, XX, XZ, ZZ, size_deltac, Lambda_in
     return V_delta
 
 # basic version currently used
-def calc_V_delta_naive(mu_lambda_inv, mu_sigma_inv, F, Big_S, idx_deltac, size_deltac, Pc, C, N, K):
-    size_beta0 = N * K
+def calc_V_delta_naive(mu_lambda_inv, mu_sigma_inv, FF, Big_S, idx_deltac, size_deltac, Pc, C, N, K):
     
     precision = mu_lambda_inv * Big_S.copy()
     
     for c in range(C):
         start = idx_deltac[c]
-        FtF = F[c].T @ F[c]  # (K+1, K+1)
-        likelihood_precision = np.kron(mu_sigma_inv[c], FtF)  # (N*(K+1), N*(K+1))
+        likelihood_precision = np.kron(mu_sigma_inv[c], FF[c])  # (N*(K+1), N*(K+1))
         
         # S_deltac places this into the delta_c block, Pc reorders
         PtLP = Pc.T @ likelihood_precision @ Pc  # (size_deltac, size_deltac)
@@ -64,10 +62,11 @@ def calc_mu_delta(V_delta, mu_sigma_inv, Y, F, idx_deltac, size_deltac, Pc, C):
     sum = np.zeros(V_delta.shape[0])
     for c in range(C):
         start = idx_deltac[c]
+        # (A kron B) vec(X) = vec(A X B.T)
         sum[start : start + size_deltac] += Pc.T @ (F[c].T @ Y[c, :, :] @ mu_sigma_inv[c]).flatten(order='F')
     return V_delta @ sum
 
-def calc_S_bar_sigma(mu_delta, V_delta, Y, F, idx_deltac, size_deltac, Pc, C, N, K):
+def calc_S_bar_sigma(mu_delta, V_delta, Y, F, FF, idx_deltac, size_deltac, Pc, C, N, K):
     S_bar_sigma = [np.eye(N)] * C
     for c in range(C):
         start = idx_deltac[c]
@@ -75,14 +74,13 @@ def calc_S_bar_sigma(mu_delta, V_delta, Y, F, idx_deltac, size_deltac, Pc, C, N,
         vec_Gc = Pc @ mu_deltac
         mu_Gc = vec_Gc.reshape(K+1, N, order='F')
 
-        FtF = F[c].T @ F[c]
         V_deltac = V_delta[start : start + size_deltac, start : start + size_deltac]
         Omega_Gc = np.zeros((N, N))
         for i in range(N):
             for j in range(N):
                 Pc_i = Pc[i*(K+1):(i+1)*(K+1), :]
                 Pc_j = Pc[j*(K+1):(j+1)*(K+1), :]
-                Omega_Gc[i, j] = np.trace(FtF @ Pc_i @ V_deltac @ Pc_j.T)
+                Omega_Gc[i, j] = np.trace(FF[c] @ Pc_i @ V_deltac @ Pc_j.T)
 
         S_bar_sigma[c] = (Y[c, :, :] - F[c] @ mu_Gc).T @ (Y[c, :, :] - F[c] @ mu_Gc) + Omega_Gc
     return S_bar_sigma
@@ -99,7 +97,7 @@ def calc_ELBO(V_delta, s_bar, v_bar, S_bar_sigma, T, C):
 """CAVI Loop"""
 
 def run_cavi(cavi_pack, C, N, K, T):
-    Y, F, XX, XZ, ZZ, idx_deltac, size_gammmac, size_deltac, Pc, Big_S, Lambda_inv, Lambda_inv_sum = cavi_pack.values()
+    Y, F, FF, XX, XZ, ZZ, idx_deltac, size_gammmac, size_deltac, Pc, Big_S, Lambda_inv, Lambda_inv_sum = cavi_pack.values()
 
     # chosen initialisations
     mu_lambda_inv = 1e4
@@ -113,7 +111,7 @@ def run_cavi(cavi_pack, C, N, K, T):
         mu_delta = calc_mu_delta(V_delta, mu_sigma_inv, Y, F, idx_deltac, size_deltac, Pc, C)
         v_bar = mu_delta.T @ Big_S @ mu_delta + np.trace(Big_S @ V_delta)
         mu_lambda_inv = s_bar/v_bar
-        S_bar_sigma = calc_S_bar_sigma(mu_delta, V_delta, Y, F, idx_deltac, size_deltac, Pc, C, N, K)
+        S_bar_sigma = calc_S_bar_sigma(mu_delta, V_delta, Y, F, FF, idx_deltac, size_deltac, Pc, C, N, K)
         mu_sigma_inv = [T * np.linalg.inv(S_bar_sigma[c]) for c in range(C)]
         ELBO.append(calc_ELBO(V_delta, s_bar, v_bar, S_bar_sigma, T, C))
 

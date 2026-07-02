@@ -30,6 +30,7 @@ def prep_data(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2):
     W = W[L:, :]
     # define relevant matrices for later use
     ZZ = Z.T @ Z                  
+    FF = np.array([F[c].T @ F[c] for c in range(C)])
     XX = np.array([X[c].T @ X[c] for c in range(C)])
     XZ = np.array([X[c].T @ Z for c in range(C)])
 
@@ -87,7 +88,7 @@ def prep_data(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2):
         Big_S[bc, b0] -= Lambda_inv[c]
 
     # export packs of what is relevant for each model
-    cavi_pack = {'Y': Y, 'F': F, 'XX': XX, 'XZ': XZ, 'ZZ': ZZ,
+    cavi_pack = {'Y': Y, 'F': F, 'FF': FF, 'XX': XX, 'XZ': XZ, 'ZZ': ZZ,
                  'idx_deltac': idx_deltac, 'size_gammac': size_gammac, 'size_deltac': size_deltac,
                  'Pc': Pc, 'Big_S': Big_S,
                  'Lambda_inv': Lambda_inv, 'Lambda_inv_sum': Lambda_inv_sum}
