@@ -44,25 +44,26 @@ def calc_D(lam, V_beta0, mu_beta0, mu_sigma_inv, Y, F, FF, Lambda_inv, size_delt
 
     D = [np.trace(Lambda_inv[c] * (V_deltac[:N*K,:N*K]
                                    + (mu_bar_deltac[c]-mu_beta0) @ (mu_bar_deltac[c]-mu_beta0).T
-                                   + G[c] @ V_beta0 @ G[c].T) 
+                                   + G[c] @ V_beta0 @ G[c].T)) 
                                    for c in range(C)]
     return D
 
 def calc_q_lambda(n_steps, step_size, lam_init, V_beta0, mu_beta0, mu_sigma_inv, Y, F, FF, Lambda_inv, size_deltac, Pc, C, N, K):
     log_lams = np.zeros(n_steps)
+    Ds = np.zeros((n_steps, C))
     l = np.log(lam_init)
     for n in range(n_steps):
         lam = np.exp(l)
         D = calc_D(lam, V_beta0, mu_beta0, mu_sigma_inv, Y, F, FF, Lambda_inv, size_deltac, Pc, C, N, K)
+        Ds[n] = D
+        log_lams[n] = l
         # score function after transforming density to log space
         score = np.sum(D)/(2*lam) - (C*N*K - 1)/2
-        l_new = l + step_size * score + np.sqrt(2*step_size) * np.random.normal()
-        log_lams[n] = l_new
-        l = l_new
+        l = l + step_size * score + np.sqrt(2*step_size) * np.random.normal()
     lams = np.exp(log_lams)
-    return lams
+    return lams, Ds
 
-def calc_exp_lambda(lams, mu_sigma_inv, mu_beta0, Y, F, FF, Lambda_inv, size_deltac, Pc, C, N, K):
+def calc_exp_lambda(lams, mu_sigma_inv, mu_beta0, Ds, Y, F, FF, Lambda_inv, size_deltac, Pc, C, N, K):
     lams = np.atleast_1d(lams)
     inv_lams = 1/lams
     mu_lambda_inv = np.mean(inv_lams)
@@ -73,13 +74,26 @@ def calc_exp_lambda(lams, mu_sigma_inv, mu_beta0, Y, F, FF, Lambda_inv, size_del
     exp_V_deltac = [V_deltac[c].mean(axis=0) for c in range(C)]
     exp_mu_deltac = [mu_deltac[c].mean(axis=0) for c in range(C)]
 
-    return mu_lambda_inv, mu_lambda1_V, mu_lambda2_V, exp_mu_deltac, exp_V_deltac
+    log_lams = np.log(lams)
+    mu_log_lambda = np.mean(log_lams)
+
+    counts, edges = np.histogram(log_lams, bins=50, density=True)
+    widths = np.diff(edges)
+    mask = counts > 0
+    mu_log_q_lambda = np.sum(counts[mask] * np.log(counts[mask]) * widths[mask]) - mu_log_lambda
+
+    logdet_V_deltac = [np.linalg.slogdet(V_deltac[c])[1] for c in range(C)]
+    exp_logdet_V_deltac = [logdet_V_deltac[c].mean(axis=0) for c in range(C)]
+
+    mu_lambda_inv_D = np.mean(np.sum(Ds, axis=1) / lams)
+
+    return mu_lambda_inv, mu_lambda1_V, mu_lambda2_V, exp_mu_deltac, exp_V_deltac, mu_log_lambda, mu_log_q_lambda, exp_logdet_V_deltac, mu_lambda_inv_D
 
 
-def calc_S_bar_sigma(mu_deltac, V_deltac, Y, F, FF, Pc, C, N, K):
+def calc_S_bar_sigma(exp_mu_deltac, exp_V_deltac, Y, F, FF, Pc, C, N, K):
     S_bar_sigma = [np.eye(N)] * C
     for c in range(C):
-        vec_Gc = Pc @ mu_deltac[c]
+        vec_Gc = Pc @ exp_mu_deltac[c]
         mu_Gc = vec_Gc.reshape(K+1, N, order='F')
 
         Omega_Gc = np.zeros((N, N))
@@ -87,18 +101,29 @@ def calc_S_bar_sigma(mu_deltac, V_deltac, Y, F, FF, Pc, C, N, K):
             for j in range(N):
                 Pc_i = Pc[i*(K+1):(i+1)*(K+1), :]
                 Pc_j = Pc[j*(K+1):(j+1)*(K+1), :]
-                Omega_Gc[i, j] = np.trace(FF[c] @ Pc_i @ V_deltac[c] @ Pc_j.T)
+                Omega_Gc[i, j] = np.trace(FF[c] @ Pc_i @ exp_V_deltac[c] @ Pc_j.T)
 
         S_bar_sigma[c] = (Y[c, :, :] - F[c] @ mu_Gc).T @ (Y[c, :, :] - F[c] @ mu_Gc) + Omega_Gc
     return S_bar_sigma
 
+def calc_ELBO(V_beta0, exp_logdet_V_deltac, S_bar_sigma, mu_log_lambda, mu_lambda_inv_D, mu_log_q_lambda, C, N, K, T):
+    _, logdet_V_beta0 = np.linalg.slogdet(V_beta0)
+    elbo = (logdet_V_beta0 + np.sum((exp_logdet_V_deltac) - (C*N*K + 1)* mu_log_lambda - mu_lambda_inv_D))/2 - mu_log_q_lambda
+    for c in range(C):
+        _, logdet_S = np.linalg.slogdet(S_bar_sigma[c])
+        elbo -= T * logdet_S / 2
+    return elbo
 
-def run_ssvi(ssvi_pack, C, N, K, T):
-    # Y, F, XX, XZ, ZZ, idx_deltac, size_gammmac, size_deltac, Pc, Big_S, Lambda_inv, Lambda_inv_sum = cavi_pack.values()
+
+
+def run_ssvi(ssvi_pack, C, N, K, T, n_steps=1000, step_size = 0.02, n_chains=4, n_burnin = 100):
+    Y, F, FF, idx_deltac, size_deltac, Pc, Lambda_inv, Lambda_inv_sum = ssvi_pack.values()
 
     # chosen initialisations
+    lam_init = 2
     mu_lambda_inv = 1e4
-    mu_lambda_V = 4
+    mu_lambda1_V = 4
+    mu_lambda2_V = 4
     mu_sigma_inv = [T * np.eye(N) for c in range(C)]
 
     epsilon = 1e-4
@@ -108,19 +133,19 @@ def run_ssvi(ssvi_pack, C, N, K, T):
         V_beta0 = calc_V_beta0(mu_lambda_inv, mu_lambda2_V, Lambda_inv, Lambda_inv_sum, C, N, K)
         mu_beta0 = calc_mu_beta0(mu_lambda1_V, mu_sigma_inv, V_beta0, Y, F, Lambda_inv, Pc, C, N, K)
 
-        q_lambda = calc_q_lambda(n_steps, step_size, lam_init, V_beta0, mu_beta0, mu_sigma_inv, Y, F, FF, Lambda_inv, size_deltac, Pc, C, N, K)
-        mu_lambda_inv, mu_lambda1_V, mu_lambda2_V, exp_mu_deltac, exp_V_deltac = calc_exp_lambda(
-            q_lambda, mu_sigma_inv, mu_beta0, Y, F, FF, Lambda_inv, size_deltac, Pc, C, N, K)
-        V_deltac = calc_V_deltac(lam, mu_sigma_inv, FF, Lambda_inv, size_deltac, Pc, C, N, K)
-        S_bar_sigma = calc_S_bar_sigma(mu_delta, V_delta, Y, F, idx_deltac, size_deltac, Pc, C, N, K)
+        q_lambda, Ds = calc_q_lambda(n_steps+n_burnin, step_size, lam_init, V_beta0, mu_beta0, mu_sigma_inv, Y, F, FF, Lambda_inv, size_deltac, Pc, C, N, K)[n_burnin:]
+        mu_lambda_inv, mu_lambda1_V, mu_lambda2_V, exp_mu_deltac, exp_V_deltac, mu_log_lambda, mu_log_q_lambda, exp_logdet_V_deltac, mu_lambda_inv_D = calc_exp_lambda(
+            q_lambda, mu_sigma_inv, mu_beta0, Ds, Y, F, FF, Lambda_inv, size_deltac, Pc, C, N, K)
+        
+        S_bar_sigma = calc_S_bar_sigma(exp_mu_deltac, exp_V_deltac, Y, F, idx_deltac, size_deltac, Pc, C, N, K)
         mu_sigma_inv = [T * np.linalg.inv(S_bar_sigma[c]) for c in range(C)]
-        ELBO.append(calc_ELBO(V_delta, s_bar, v_bar, S_bar_sigma, T, C))
+
+        ELBO.append(calc_ELBO(V_beta0, exp_logdet_V_deltac, S_bar_sigma, mu_log_lambda, mu_lambda_inv_D, mu_log_q_lambda, C, N, K, T))
 
     params = {
-        'mu_delta': mu_delta,
-        'V_delta': V_delta,
-        'v_bar': v_bar,
-        's_bar': s_bar,
+        'mu_beta0': mu_beta0,
+        'V_beta0': V_beta0,
+        'q_lambda': q_lambda,
         'S_bar_sigma': S_bar_sigma
     }
     
