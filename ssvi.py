@@ -31,18 +31,18 @@ def calc_mu_deltac(lam, beta0, V_deltac, mu_sigma_inv, Y, F, Lambda_inv, size_de
         term = Pc.T @ (F[c].T @ Y[c, :, :] @ mu_sigma_inv[c]).flatten(order='F')
         beta_term = (1.0/lam)[:, None] * (Lambda_inv[c] @ beta0)[None, :] 
         term_batch = np.tile(term, (n, 1))                                 # (n, size_deltac)
-        term_batch[:, :NK] += beta_term
+        term_batch[:, :N*K] += beta_term
         mu_deltac[c] = np.matmul(V_deltac[c], term_batch[..., None]).squeeze(-1)
     return mu_deltac
 
 def calc_D(lam, V_beta0, mu_beta0, mu_sigma_inv, Y, F, FF, Lambda_inv, size_deltac, Pc, C, N, K):
-    V_deltac = calc_V_deltac(l, mu_sigma_inv, FF, Lambda_inv, size_deltac, Pc, C, N, K)
-    mu_deltac = calc_mu_deltac(l, mu_beta0, V_deltac, mu_sigma_inv, Y, F, Lambda_inv, size_deltac, Pc, C, N, K)
-    mu_bar_deltac = [mu_deltac[c][:NK] for c in range(C)]
+    V_deltac = calc_V_deltac(lam, mu_sigma_inv, FF, Lambda_inv, size_deltac, Pc, C, N, K)
+    mu_deltac = calc_mu_deltac(lam, mu_beta0, V_deltac, mu_sigma_inv, Y, F, Lambda_inv, size_deltac, Pc, C, N, K)
+    mu_bar_deltac = [mu_deltac[c][:N*K] for c in range(C)]
 
-    G = [lam**-1 * V_deltac[c][:NK,:NK] @ Lambda_inv[c] - np.eye[NK] for c in range(C)]
+    G = [lam**-1 * V_deltac[c][:N*K,:N*K] @ Lambda_inv[c] - np.eye[N*K] for c in range(C)]
 
-    D = [np.trace(Lambda_inv[c] * (V_deltac[:NK,:NK] 
+    D = [np.trace(Lambda_inv[c] * (V_deltac[:N*K,:N*K]
                                    + (mu_bar_deltac[c]-mu_beta0) @ (mu_bar_deltac[c]-mu_beta0).T
                                    + G[c] @ V_beta0 @ G[c].T) 
                                    for c in range(C)]
@@ -62,10 +62,18 @@ def calc_q_lambda(n_steps, step_size, lam_init, V_beta0, mu_beta0, mu_sigma_inv,
     lams = np.exp(log_lams)
     return lams
 
-def calc_exp_lambda(q_lambda, mu_sigma_inv, mu_beta0, Y, F, FF, Lambda_inv, size_deltac, Pc, C, N, K):
-    mu_lambda_inv = np.mean(1/q_lambda)
-    mu_lambda1_V = [np.mean(1/q_lambda)*calc_V_deltac()
-    pass
+def calc_exp_lambda(lams, mu_sigma_inv, mu_beta0, Y, F, FF, Lambda_inv, size_deltac, Pc, C, N, K):
+    lams = np.atleast_1d(lams)
+    inv_lams = 1/lams
+    mu_lambda_inv = np.mean(inv_lams)
+    V_deltac =  calc_V_deltac(lams, mu_sigma_inv, FF, Lambda_inv, size_deltac, Pc, C, N, K)
+    mu_deltac = calc_mu_deltac(lams, mu_beta0, V_deltac, mu_sigma_inv, Y, F, Lambda_inv, size_deltac, Pc, C, N, K)
+    mu_lambda1_V = [(inv_lams[:, None, None] * V_deltac[c]).mean(axis=0) for c in range(C)]
+    mu_lambda2_V = [(inv_lams[:, None, None]**2 * V_deltac[c]).mean(axis=0) for c in range(C)]
+    exp_V_deltac = [V_deltac[c].mean(axis=0) for c in range(C)]
+    exp_mu_deltac = [mu_deltac[c].mean(axis=0) for c in range(C)]
+
+    return mu_lambda_inv, mu_lambda1_V, mu_lambda2_V, exp_mu_deltac, exp_V_deltac
 
 
 def calc_S_bar_sigma(mu_deltac, V_deltac, Y, F, FF, Pc, C, N, K):
@@ -101,7 +109,7 @@ def run_ssvi(ssvi_pack, C, N, K, T):
         mu_beta0 = calc_mu_beta0(mu_lambda1_V, mu_sigma_inv, V_beta0, Y, F, Lambda_inv, Pc, C, N, K)
 
         q_lambda = calc_q_lambda(n_steps, step_size, lam_init, V_beta0, mu_beta0, mu_sigma_inv, Y, F, FF, Lambda_inv, size_deltac, Pc, C, N, K)
-        mu_lambda_inv, mu_lambda1_V, mu_lambda2_V, mu_deltac, V_deltac = calc_exp_lambda(
+        mu_lambda_inv, mu_lambda1_V, mu_lambda2_V, exp_mu_deltac, exp_V_deltac = calc_exp_lambda(
             q_lambda, mu_sigma_inv, mu_beta0, Y, F, FF, Lambda_inv, size_deltac, Pc, C, N, K)
         V_deltac = calc_V_deltac(lam, mu_sigma_inv, FF, Lambda_inv, size_deltac, Pc, C, N, K)
         S_bar_sigma = calc_S_bar_sigma(mu_delta, V_delta, Y, F, idx_deltac, size_deltac, Pc, C, N, K)
