@@ -96,5 +96,5 @@ def prep_data(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2):
                  'Pc': Pc, 'Lambda_inv': Lambda_inv, 'Lambda_inv_sum': Lambda_inv_sum}
     gibbs_pack =  {'Y': Y, 'X': X, 'Z': Z,
                  'Lambda_inv': Lambda_inv, 'Lambda_inv_sum_inv': Lambda_inv_sum_inv}
-    
+
     return cavi_pack, ssvi_pack, gibbs_pack

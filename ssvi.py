@@ -90,17 +90,18 @@ def calc_exp_lambda(lams, mu_sigma_inv, mu_beta0, Ds, Y, F, FF, Lambda_inv, size
     return mu_lambda_inv, mu_lambda1_V, mu_lambda2_V, exp_mu_deltac, exp_V_deltac, mu_log_lambda, mu_log_q_lambda, exp_logdet_V_deltac, mu_lambda_inv_D
 
 
-def calc_S_bar_sigma(exp_mu_deltac, exp_V_deltac, Y, F, FF, Pc, C, N, K):
+def calc_S_bar_sigma(exp_mu_deltac, exp_V_deltac, Y, F, FF, Z_width, Pc, C, N, K):
+    width = K+Z_width
     S_bar_sigma = [np.eye(N)] * C
     for c in range(C):
         vec_Gc = Pc @ exp_mu_deltac[c]
-        mu_Gc = vec_Gc.reshape(K+1, N, order='F')
+        mu_Gc = vec_Gc.reshape(width, N, order='F')
 
         Omega_Gc = np.zeros((N, N))
         for i in range(N):
             for j in range(N):
-                Pc_i = Pc[i*(K+1):(i+1)*(K+1), :]
-                Pc_j = Pc[j*(K+1):(j+1)*(K+1), :]
+                Pc_i = Pc[i*width:(i+1)*width, :]
+                Pc_j = Pc[j*width:(j+1)*width, :]
                 Omega_Gc[i, j] = np.trace(FF[c] @ Pc_i @ exp_V_deltac[c] @ Pc_j.T)
 
         S_bar_sigma[c] = (Y[c, :, :] - F[c] @ mu_Gc).T @ (Y[c, :, :] - F[c] @ mu_Gc) + Omega_Gc
@@ -116,14 +117,14 @@ def calc_ELBO(V_beta0, exp_logdet_V_deltac, S_bar_sigma, mu_log_lambda, mu_lambd
 
 
 
-def run_ssvi(ssvi_pack, C, N, K, T, n_steps=1000, step_size = 0.02, n_chains=4, n_burnin = 100):
+def run_ssvi(ssvi_pack, Z_width, C, N, K, T, n_steps=1000, step_size = 0.02, n_chains=4, n_burnin = 100):
     Y, F, FF, idx_deltac, size_deltac, Pc, Lambda_inv, Lambda_inv_sum = ssvi_pack.values()
 
     # chosen initialisations
-    lam_init = 2
+    lam_init = 1e-4
     mu_lambda_inv = 1e4
-    mu_lambda1_V = 4
-    mu_lambda2_V = 4
+    mu_lambda1_V = [mu_lambda_inv * np.eye(size_deltac) for _ in range(C)]
+    mu_lambda2_V = [mu_lambda_inv**2 * np.eye(size_deltac) for _ in range(C)]
     mu_sigma_inv = [T * np.eye(N) for c in range(C)]
 
     epsilon = 1e-4
@@ -137,7 +138,7 @@ def run_ssvi(ssvi_pack, C, N, K, T, n_steps=1000, step_size = 0.02, n_chains=4, 
         mu_lambda_inv, mu_lambda1_V, mu_lambda2_V, exp_mu_deltac, exp_V_deltac, mu_log_lambda, mu_log_q_lambda, exp_logdet_V_deltac, mu_lambda_inv_D = calc_exp_lambda(
             q_lambda, mu_sigma_inv, mu_beta0, Ds, Y, F, FF, Lambda_inv, size_deltac, Pc, C, N, K)
         
-        S_bar_sigma = calc_S_bar_sigma(exp_mu_deltac, exp_V_deltac, Y, F, idx_deltac, size_deltac, Pc, C, N, K)
+        S_bar_sigma = calc_S_bar_sigma(exp_mu_deltac, exp_V_deltac, Y, F, FF, Z_width, Pc, C, N, K)
         mu_sigma_inv = [T * np.linalg.inv(S_bar_sigma[c]) for c in range(C)]
 
         ELBO.append(calc_ELBO(V_beta0, exp_logdet_V_deltac, S_bar_sigma, mu_log_lambda, mu_lambda_inv_D, mu_log_q_lambda, C, N, K, T))
