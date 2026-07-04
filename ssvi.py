@@ -113,7 +113,7 @@ def calc_S_bar_sigma(exp_mu_deltac, exp_V_deltac, Y, F, FF, Z_width, Pc, C, N, K
 
 def calc_ELBO(V_beta0, exp_logdet_V_deltac, S_bar_sigma, mu_log_lambda, mu_lambda_inv_D, mu_log_q_lambda, C, N, K, T):
     _, logdet_V_beta0 = np.linalg.slogdet(V_beta0)
-    elbo = (logdet_V_beta0 + np.sum((exp_logdet_V_deltac) - (C*N*K + 1)* mu_log_lambda - mu_lambda_inv_D))/2 - mu_log_q_lambda
+    elbo = (logdet_V_beta0 + np.sum((exp_logdet_V_deltac)) - (C*N*K + 1)* mu_log_lambda - mu_lambda_inv_D)/2 - mu_log_q_lambda
     for c in range(C):
         _, logdet_S = np.linalg.slogdet(S_bar_sigma[c])
         elbo -= T * logdet_S / 2
