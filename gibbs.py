@@ -66,7 +66,7 @@ def _compute_diagnostics(all_chains_data, n_burnin):
         n_post = len(chain_data['lam']) - n_burnin
 
         # Discard burn-in and flatten each parameter to (n_post, d_param)
-        lam     = np.array(chain_data['lam']    )[n_burnin:, np.newaxis]          # (n_post, 1)
+        lam     = np.array(chain_data['lam'])[n_burnin:, np.newaxis]          # (n_post, 1)
         beta_0  = np.array(chain_data['beta_0'] )[n_burnin:]                       # (n_post, N*K)
         beta_c  = np.array(chain_data['beta_c'] )[n_burnin:].reshape(n_post, -1)  # (n_post, C*N*K)
         gamma_c = np.array(chain_data['gamma_c'])[n_burnin:].reshape(n_post, -1)  # (n_post, C*N)
