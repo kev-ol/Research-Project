@@ -26,11 +26,23 @@ def calc_V_deltac(lam, mu_sigma_inv, FF, Lambda_inv, size_deltac, Pc, C, N, K):
 def calc_mu_deltac(lam, beta0, V_deltac, mu_sigma_inv, Y, F, Lambda_inv, size_deltac, Pc, C, N, K):
     lam = np.atleast_1d(lam)
     n = len(lam)
+    beta0 = np.asarray(beta0)
+    batched_beta0 = beta0.ndim == 2
+
+    if batched_beta0:
+        assert beta0.shape[0] == n, "lam and beta0 batch sizes must match for pairing"
+
     mu_deltac = [np.zeros(shape=size_deltac)] * C
     for c in range(C):
         term = Pc.T @ (F[c].T @ Y[c, :, :] @ mu_sigma_inv[c]).flatten(order='F')
-        beta_term = (1.0/lam)[:, None] * (Lambda_inv[c] @ beta0)[None, :] 
         term_batch = np.tile(term, (n, 1))                                 # (n, size_deltac)
+
+        if batched_beta0:
+            beta_transformed = np.einsum('ij,nj->ni', Lambda_inv[c], beta0)  # (n, N*K), paired per-sample
+        else:
+            beta_transformed = (Lambda_inv[c] @ beta0)[None, :]              # (1, N*K), broadcasts as before
+
+        beta_term = (1.0/lam)[:, None] * beta_transformed
         term_batch[:, :N*K] += beta_term
         mu_deltac[c] = np.matmul(V_deltac[c], term_batch[..., None]).squeeze(-1)
     return mu_deltac
@@ -145,8 +157,8 @@ def run_ssvi(ssvi_pack, Z_width, C, N, K, T, n_steps=1000, step_size = 0.0001, n
     while len(ELBO) < 10 or ELBO[-1] - ELBO[-2] > epsilon:
         V_beta0 = calc_V_beta0(mu_lambda_inv, mu_lambda2_V, Lambda_inv, Lambda_inv_sum, C, N, K)
         mu_beta0 = calc_mu_beta0(mu_lambda1_V, mu_sigma_inv, V_beta0, Y, F, Lambda_inv, Pc, C, N, K)
-        if len(ELBO)>0:
-            elbo_after_beta0 = calc_ELBO(V_beta0, exp_logdet_V_deltac, S_bar_sigma, mu_log_lambda, mu_lambda_inv_D, mu_log_q_lambda, C, N, K, T)
+        #if len(ELBO)>0:
+        #    elbo_after_beta0 = calc_ELBO(V_beta0, exp_logdet_V_deltac, S_bar_sigma, mu_log_lambda, mu_lambda_inv_D, mu_log_q_lambda, C, N, K, T)
 
         q_lambda, Ds = calc_q_lambda(n_steps+n_burnin, step_size, lam_init, V_beta0, mu_beta0, mu_sigma_inv, Y, F, FF, Lambda_inv, size_deltac, Pc, C, N, K)
         q_lambda = q_lambda[n_burnin:]
@@ -154,14 +166,14 @@ def run_ssvi(ssvi_pack, Z_width, C, N, K, T, n_steps=1000, step_size = 0.0001, n
         lam_init = q_lambda[-1]
         mu_lambda_inv, mu_lambda1_V, mu_lambda2_V, exp_mu_deltac, exp_V_deltac, mu_log_lambda, mu_log_q_lambda, exp_logdet_V_deltac, mu_lambda_inv_D = calc_exp_lambda(
             q_lambda, mu_sigma_inv, mu_beta0, Ds, Y, F, FF, Lambda_inv, size_deltac, Pc, C, N, K)
-        if len(ELBO)>0:
-            elbo_after_lambda = calc_ELBO(V_beta0, exp_logdet_V_deltac, S_bar_sigma, mu_log_lambda, mu_lambda_inv_D, mu_log_q_lambda, C, N, K, T)
+        #if len(ELBO)>0:
+        #    elbo_after_lambda = calc_ELBO(V_beta0, exp_logdet_V_deltac, S_bar_sigma, mu_log_lambda, mu_lambda_inv_D, mu_log_q_lambda, C, N, K, T)
 
         S_bar_sigma = calc_S_bar_sigma(exp_mu_deltac, exp_V_deltac, Y, F, FF, Z_width, Pc, C, N, K)
         mu_sigma_inv = [T * np.linalg.inv(S_bar_sigma[c]) for c in range(C)]  
         elbo_after_sigma = calc_ELBO(V_beta0, exp_logdet_V_deltac, S_bar_sigma, mu_log_lambda, mu_lambda_inv_D, mu_log_q_lambda, C, N, K, T)
-        if len(ELBO)>0:
-            print(elbo_after_beta0, elbo_after_lambda, elbo_after_sigma)
+        #if len(ELBO)>0:
+        #    print(elbo_after_beta0, elbo_after_lambda, elbo_after_sigma)
         ELBO.append(elbo_after_sigma)
     
     params = {
