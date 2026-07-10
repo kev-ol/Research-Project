@@ -54,7 +54,7 @@ def calc_D(lam, V_beta0, mu_beta0, mu_sigma_inv, Y, F, FF, Lambda_inv, size_delt
     # calc_D is called with a single scalar lam, so squeeze the batch dim
     V_deltac = [V[0] for V in V_deltac]      # (size_deltac, size_deltac)
     mu_bar_deltac = [m[0] for m in mu_bar_deltac]    # (size_deltac,)
-    mu_bar_betac = [mu_deltac[c][:N*K] for c in range(C)]
+    mu_bar_betac = [mu_bar_deltac[c][:N*K] for c in range(C)]
 
     G = [lam**-1 * V_deltac[c][:N*K,:N*K] @ Lambda_inv[c] - np.eye(N*K) for c in range(C)]
 
@@ -147,7 +147,7 @@ def calc_ELBO(V_beta0, exp_logdet_V_deltac, S_bar_sigma, mu_log_lambda, mu_lambd
 
 
 
-def run_ssvi(ssvi_pack, Z_width, C, N, K, T, n_steps=1000, step_size = 0.0001, n_chains=4, n_burnin = 100):
+def run_ssvi(ssvi_pack, Z_width, C, N, K, T, n_steps=1000, step_size = 0.0001, n_burnin = 100):
     Y, F, FF, idx_deltac, size_deltac, Pc, Lambda_inv, Lambda_inv_sum = ssvi_pack.values()
 
     # chosen initialisations
@@ -171,7 +171,7 @@ def run_ssvi(ssvi_pack, Z_width, C, N, K, T, n_steps=1000, step_size = 0.0001, n
         Ds = Ds[n_burnin:]
         lam_init = q_lambda[-1]
         mu_lambda_inv, mu_lambda1_V, mu_lambda2_V, exp_mu_deltac, cov_deltac, mu_log_lambda, mu_log_q_lambda, exp_logdet_V_deltac, mu_lambda_inv_D = calc_exp_lambda(
-            lams, mu_sigma_inv, mu_beta0, V_beta0, Ds, Y, F, FF, Lambda_inv, size_deltac, Pc, C, N, K)
+            q_lambda, mu_sigma_inv, mu_beta0, V_beta0, Ds, Y, F, FF, Lambda_inv, size_deltac, Pc, C, N, K)
         #if len(ELBO)>0:
         #    elbo_after_lambda = calc_ELBO(V_beta0, exp_logdet_V_deltac, S_bar_sigma, mu_log_lambda, mu_lambda_inv_D, mu_log_q_lambda, C, N, K, T)
 
