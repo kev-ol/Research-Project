@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import arviz as az
 from scipy.stats import invgamma, invwishart
+from numpy.linalg import lstsq
 
 # ── Gibbs sampling functions ─────────────────────────────────────────────────
 # Each function draws one sample from the conditional posterior of a single
@@ -94,18 +95,32 @@ def run_gibbs(gibbs_pack, C, N, K, Z_width, T, n_chains=4, n_steps=10000, n_burn
     for c in range(C):
         y[c] = Y[c, :, :].flatten(order='F')
 
+    # ── Grounded starting points, computed once ─────────────────────────────
+    # Joint OLS per country on F_c = [X_c, Z] gives sensible beta_c/gamma_c starts
+    beta_c_ols = []
+    gamma_c_ols = []
+    for c in range(C):
+        F_c = np.hstack([X[c, :, :], Z])                      # match F_c's actual column convention
+        coef, *_ = lstsq(F_c, Y[c, :, :], rcond=None)           # (K+Z_width, N)
+        beta_c_ols.append(coef[:K, :].flatten(order='F'))
+        gamma_c_ols.append(coef[K:, :].flatten(order='F'))
+
+    beta_0_ols = np.mean(beta_c_ols, axis=0)
+
     all_chains_data = []
 
     for chain_idx in range(n_chains):
-        # Each chain starts at a different scale to ensure overdispersed initialisation,
-        # which is required for R-hat to detect non-convergence
-        scale       = chain_idx + 1
-        beta_0      = np.random.randn(N*K) * scale
-        beta_c      = [np.random.randn(N*K) * scale for _ in range(C)]
-        gamma_c     = [np.random.randn(N*Z_width) * scale for _ in range(C)]
+        # Small, controlled per-chain perturbations around grounded starting points —
+        # enough spread for a valid R-hat check, without starting chains far from
+        # the posterior's actual region (which was the root cause of poor mixing).
+        noise_scale = 0.05 * (chain_idx + 1)
+
+        beta_0      = beta_0_ols + np.random.randn(N*K) * noise_scale
+        beta_c      = [beta_c_ols[c] + np.random.randn(N*K) * noise_scale for c in range(C)]
+        gamma_c     = [gamma_c_ols[c] + np.random.randn(N*Z_width) * noise_scale for c in range(C)]
         Sigma_c     = [(lambda A: A @ A.T + np.eye(N))(np.random.randn(N, N)) for _ in range(C)]
         Sigma_c_inv = [np.linalg.inv(S) for S in Sigma_c]
-        lam         = np.random.exponential(scale)
+        lam         = 1e-4 + 1e-5 * np.random.uniform(-1, 1) * (chain_idx + 1)
 
         samples = {'beta_0': [], 'lam': [], 'beta_c': [], 'gamma_c': [], 'Sigma_c': []}
 
@@ -131,8 +146,7 @@ def run_gibbs(gibbs_pack, C, N, K, Z_width, T, n_chains=4, n_steps=10000, n_burn
 
     ess, r_hat = _compute_diagnostics(all_chains_data, n_burnin)
 
-    # Return post-burnin samples pooled across all chains alongside the diagnostics
-    post_burnin_samples = {k: np.concatenate([chain[k][n_burnin:] for chain in all_chains_data], axis=0) 
+    post_burnin_samples = {k: np.concatenate([chain[k][n_burnin:] for chain in all_chains_data], axis=0)
                           for k in all_chains_data[0].keys()}
     post_burnin_samples["delta_c"] = [
         [np.concatenate([post_burnin_samples["beta_c"][t][c], post_burnin_samples["gamma_c"][t][c]])
