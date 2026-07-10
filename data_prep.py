@@ -48,16 +48,17 @@ def prep_data(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2):
     Pc = np.zeros((size_deltac, size_deltac))
 
     for n in range(N):
+        # beta_c's n-th block of K terms -> goes to positions n*(K+Z_width) .. n*(K+Z_width)+K-1
         for k in range(K):
-            col_major_pos = k * N + n
-            row_major_pos = n * K + k
-            Pc[row_major_pos, col_major_pos] = 1
+            col_pos = n*K + k                      # position in delta_c's beta_c segment
+            row_pos = n*(K + Z_width) + k          # position in the interleaved output
+            Pc[row_pos, col_pos] = 1
 
-    for n in range(N):
-        for k in range(Z_width):
-            col_major_pos = k * N + n
-            row_major_pos = n * Z_width + k
-            Pc[N*K + row_major_pos, N*K + col_major_pos] = 1
+        # gamma_c's n-th block of Z_width terms -> goes to positions n*(K+Z_width)+K .. n*(K+Z_width)+K+Z_width-1
+        for z in range(Z_width):
+            col_pos = N*K + n*Z_width + z          # position in delta_c's gamma_c segment (offset by N*K)
+            row_pos = n*(K + Z_width) + K + z      # position in the interleaved output
+            Pc[row_pos, col_pos] = 1
 
     # make Lambda for Minnesota prior
     Lambda = np.zeros((C, N*K, N*K))
