@@ -11,12 +11,14 @@ from numpy.linalg import lstsq
 # Each function draws one sample from the conditional posterior of a single
 # parameter block, given the current values of all other parameters.
 
-def beta_0_sample(lam, beta_c, Lambda_inv, Lambda_inv_sum_inv, C):
+def beta_0_sample(lam, Sigma_inv, gamma, y, X, XX, Z, Lambda_inv, Lambda_inv_sum, C, N):
     # Posterior: beta_0 | rest ~ N(mu, V)
     # V = lambda * (sum Lambda_inv_c)^{-1}
     # mu = V * (1/lambda) * sum_c Lambda_inv_c beta_c
-    V_beta_0 = lam * Lambda_inv_sum_inv
-    mu_beta_0 = V_beta_0 @ ((1/lam) * sum(Lambda_inv[c] @ beta_c[c] for c in range(C)))
+    P_inv = [np.linalg.inv((1/lam)*Lambda_inv[c] + np.kron(Sigma_inv[c], XX[c])) for c in range(C)]
+    V_beta_0 = np.linalg.inv((1/lam) * Lambda_inv_sum - (1/lam**2) * sum(Lambda_inv[c] @ P_inv[c] @ Lambda_inv[c] for c in range(C)))
+    r = [y[c] - np.kron(np.eye(N), Z) @ gamma[c] for c in range(C)]
+    mu_beta_0 = V_beta_0 @ ((1/lam) * sum(Lambda_inv[c] @ P_inv[c] @ np.kron(Sigma_inv[c], X[c].T) @ r[c] for c in range(C)))
     sample = np.random.multivariate_normal(mu_beta_0, V_beta_0)
     return sample
 
@@ -28,21 +30,21 @@ def lambda_sample(beta_c, beta_0, Lambda_inv, C, N, K):
     sample = invgamma.rvs(s_bar/2, scale=v_bar/2)
     return sample
 
-def beta_c_sample(lam, beta_0, Sigma_inv, gamma, y_c, X_c, Z, Lambda_inv_c, N):
+def beta_c_sample(lam, beta_0, Sigma_inv, gamma, y_c, X_c, XX_c, Z, Lambda_inv_c, N):
     # Posterior: beta_c | rest ~ N(mu, V)
     # Precision = (1/lambda) Lambda_inv_c + Sigma_inv ⊗ X'X
     # r_c removes the gamma contribution from y before computing mu
-    V_beta_c = np.linalg.inv((1/lam)*Lambda_inv_c + np.kron(Sigma_inv, (X_c.T @ X_c)))
+    V_beta_c = np.linalg.inv((1/lam)*Lambda_inv_c + np.kron(Sigma_inv, XX_c))
     r_c = y_c - np.kron(np.eye(N), Z) @ gamma
     mu_beta_c = V_beta_c@((1/lam)*Lambda_inv_c @ beta_0 + np.kron(Sigma_inv, X_c.T) @ r_c)
     sample = np.random.multivariate_normal(mu_beta_c, V_beta_c)
     return sample
 
-def gamma_c_sample(Sigma_inv, beta, y_c, X_c, Z, N):
+def gamma_c_sample(Sigma_inv, beta, y_c, X_c, Z, ZZ, N):
     # Posterior: gamma_c | rest ~ N(mu, V)
     # Precision = Sigma_inv ⊗ Z'Z
     # r_c removes the beta contribution from y before computing mu
-    V_gamma_c = np.linalg.inv(np.kron(Sigma_inv, (Z.T @ Z)))
+    V_gamma_c = np.linalg.inv(np.kron(Sigma_inv, ZZ))
     r_c = y_c - np.kron(np.eye(N), X_c) @ beta
     mu_gamma_c = V_gamma_c@(np.kron(Sigma_inv, Z.T)) @ r_c
     sample = np.random.multivariate_normal(mu_gamma_c, V_gamma_c)
@@ -88,7 +90,7 @@ def _compute_diagnostics(all_chains_data, n_burnin):
 # ── Gibbs sampler ────────────────────────────────────────────────────────────
 
 def run_gibbs(gibbs_pack, C, N, K, Z_width, T, n_chains=4, n_steps=10000, n_burnin=2000):
-    Y, X, Z, Lambda_inv, Lambda_inv_sum_inv = gibbs_pack.values()
+    Y, X, XX, Z, ZZ, Lambda_inv, Lambda_inv_sum = gibbs_pack.values()
 
     # Vectorise Y column-major so y[c] = vec(Y_c), matching the Kronecker convention
     y = np.zeros((C, T*N))
@@ -126,16 +128,16 @@ def run_gibbs(gibbs_pack, C, N, K, Z_width, T, n_chains=4, n_steps=10000, n_burn
 
         # Sweep through all conditional posteriors in turn
         for n in range(n_steps):
-            beta_0 = beta_0_sample(lam, beta_c, Lambda_inv, Lambda_inv_sum_inv, C)
+            beta_0 = beta_0_sample(lam, Sigma_inv, gamma, y, X, XX, Z, Lambda_inv, Lambda_inv_sum, C, N)
             samples['beta_0'].append(beta_0.copy())
 
             lam = lambda_sample(beta_c, beta_0, Lambda_inv, C, N, K)
             samples['lam'].append(lam)
 
-            beta_c = [beta_c_sample(lam, beta_0, Sigma_c_inv[c], gamma_c[c], y[c], X[c,:,:], Z, Lambda_inv[c], N) for c in range(C)]
+            beta_c = [beta_c_sample(lam, beta_0, Sigma_c_inv[c], gamma_c[c], y[c], X[c,:,:], XX[c], Z, Lambda_inv[c], N) for c in range(C)]
             samples['beta_c'].append(beta_c.copy())
 
-            gamma_c = [gamma_c_sample(Sigma_c_inv[c], beta_c[c], y[c], X[c,:,:], Z, N) for c in range(C)]
+            gamma_c = [gamma_c_sample(Sigma_c_inv[c], beta_c[c], y[c], X[c,:,:], Z, ZZ, N) for c in range(C)]
             samples['gamma_c'].append(gamma_c.copy())
 
             Sigma_c = [Sigma_c_sample(beta_c[c].reshape(K, N, order='F'), gamma_c[c].reshape(Z_width, N, order='F'), Y[c,:,:], X[c,:,:], Z, N, T) for c in range(C)]
