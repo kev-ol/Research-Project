@@ -30,7 +30,7 @@ def lambda_sample(beta_c, beta_0, Lambda_inv, C, N, K):
     sample = invgamma.rvs(s_bar/2, scale=v_bar/2)
     return sample
 
-def beta_c_sample(lam, beta_0, Sigma_inv, gamma, V_beta_c, y_c, X_c, XX_c, Z, Lambda_inv_c, N):
+def beta_c_sample(lam, beta_0, Sigma_inv, gamma, V_beta_c, y_c, X_c, Z, Lambda_inv_c, N):
     # Posterior: beta_c | rest ~ N(mu, V)
     # Precision = (1/lambda) Lambda_inv_c + Sigma_inv ⊗ X'X
     # r_c removes the gamma contribution from y before computing mu
@@ -130,11 +130,11 @@ def run_gibbs(gibbs_pack, C, N, K, Z_width, T, n_chains=4, n_steps=10000, n_burn
             beta_0, V_beta_c = beta_0_sample(lam, Sigma_c_inv, gamma_c, y, X, XX, Z, Lambda_inv, Lambda_inv_sum, C, N)
             samples['beta_0'].append(beta_0.copy())
 
+            beta_c = [beta_c_sample(lam, beta_0, Sigma_c_inv[c], gamma_c[c], V_beta_c[c], y[c], X[c,:,:], Z, Lambda_inv[c], N) for c in range(C)]
+            samples['beta_c'].append(beta_c.copy())
+
             lam = lambda_sample(beta_c, beta_0, Lambda_inv, C, N, K)
             samples['lam'].append(lam)
-
-            beta_c = [beta_c_sample(lam, beta_0, Sigma_c_inv[c], gamma_c[c], V_beta_c[c], y[c], X[c,:,:], XX[c], Z, Lambda_inv[c], N) for c in range(C)]
-            samples['beta_c'].append(beta_c.copy())
 
             gamma_c = [gamma_c_sample(Sigma_c_inv[c], beta_c[c], y[c], X[c,:,:], Z, ZZ, N) for c in range(C)]
             samples['gamma_c'].append(gamma_c.copy())
