@@ -186,7 +186,8 @@ def run_ssvi(ssvi_pack, Z_width, C, N, K, T, n_steps=1000, step_size = 0.0001, n
         'mu_beta0': mu_beta0,
         'V_beta0': V_beta0,
         'q_lambda': q_lambda,
-        'S_bar_sigma': S_bar_sigma
+        'S_bar_sigma': S_bar_sigma,
+        'cov_deltac': cov_deltac
     }
     
     return params, ELBO
