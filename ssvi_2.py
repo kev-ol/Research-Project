@@ -166,11 +166,15 @@ def run_ssvi2(ssvi_pack, Z_width, C, N, K, T, n_steps=1000, step_size = 0.01, n_
 
     epsilon = 1e-4
     ELBO = []
+    ess_list = []
 
     while len(ELBO) < 10 or ELBO[-1] - ELBO[-2] > epsilon:
         q_lambda, Ds = calc_q_lambda2(n_steps, step_size, lam_init, mu_sigma_inv, Y, F, FF, Lambda_inv, Lambda_inv_sum, size_deltac, Pc, C, N, K)
         q_lambda = q_lambda[n_burnin:]
         Ds = Ds[n_burnin:]
+        log_lams = np.log(q_lambda)                     
+        ess_val = az.ess(log_lams[None, :]).item()
+        ess_list.append(ess_val) 
         lam_init = q_lambda[-1]
         exp_mu_deltac, cov_deltac, mu_log_lambda, mu_log_q_lambda, exp_logdet_V_beta0, exp_logdet_V_deltac, mu_lambda_inv_D = calc_exp_lambda2(
             q_lambda, mu_sigma_inv, Ds, Y, F, FF, Lambda_inv, Lambda_inv_sum, size_deltac, Pc, C, N, K)
@@ -190,4 +194,4 @@ def run_ssvi2(ssvi_pack, Z_width, C, N, K, T, n_steps=1000, step_size = 0.01, n_
         'cov_deltac': cov_deltac
     }
     
-    return params, ELBO
+    return params, ELBO, ess_list
