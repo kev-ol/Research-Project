@@ -89,7 +89,7 @@ def prep_data(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2):
         Big_S[bc, b0] -= Lambda_inv[c]
 
     # export packs of what is relevant for each model
-    cavi_pack = {'Y': Y, 'F': F, 'FF': FF, 'XX': XX, 'XZ': XZ, 'ZZ': ZZ,
+    mfvi_pack = {'Y': Y, 'F': F, 'FF': FF, 'XX': XX, 'XZ': XZ, 'ZZ': ZZ,
                  'idx_deltac': idx_deltac, 'size_gammac': size_gammac, 'size_deltac': size_deltac,
                  'Pc': Pc, 'Big_S': Big_S,
                  'Lambda_inv': Lambda_inv, 'Lambda_inv_sum': Lambda_inv_sum}
@@ -100,4 +100,4 @@ def prep_data(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2):
     gibbs_pack_og =  {'Y': Y, 'X': X, 'Z': Z,
                  'Lambda_inv': Lambda_inv, 'Lambda_inv_sum_inv': Lambda_inv_sum_inv}
 
-    return cavi_pack, ssvi_pack, gibbs_pack, gibbs_pack_og
+    return mfvi_pack, ssvi_pack, gibbs_pack, gibbs_pack_og

@@ -2,7 +2,7 @@
 
 import numpy as np
 
-"""CAVI Update Functions"""
+"""MFVI Update Functions"""
 # Lee-Wand streamlined version (still to be fixd)
 def calc_V_delta(mu_lambda_inv, mu_sigma_inv, XX, XZ, ZZ, size_deltac, Lambda_inv, Lambda_inv_sum, C, N, K):
     NK = N * K
@@ -95,10 +95,10 @@ def calc_ELBO(V_delta, s_bar, v_bar, S_bar_sigma, T, C):
         elbo -= T * logdet_S / 2
     return elbo
 
-"""CAVI Loop"""
+"""MFVI Loop"""
 
-def run_cavi(cavi_pack, Z_width, C, N, K, T):
-    Y, F, FF, XX, XZ, ZZ, idx_deltac, size_gammmac, size_deltac, Pc, Big_S, Lambda_inv, Lambda_inv_sum = cavi_pack.values()
+def run_mfvi(mfvi_pack, Z_width, C, N, K, T):
+    Y, F, FF, XX, XZ, ZZ, idx_deltac, size_gammmac, size_deltac, Pc, Big_S, Lambda_inv, Lambda_inv_sum = mfvi_pack.values()
 
     # chosen initialisations
     mu_lambda_inv = 1e4
