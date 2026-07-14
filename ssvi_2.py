@@ -159,12 +159,13 @@ def calc_ELBO2(exp_logdet_V_beta0, exp_logdet_V_deltac, S_bar_sigma, mu_log_lamb
     return elbo
 
 
-def run_ssvi2(ssvi_pack, Z_width, C, N, K, T, n_steps=1000, step_size = 0.01, n_burnin = 100):
+def run_ssvi2(ssvi_pack, Z_width, C, N, K, T, n_steps=1000, step_size_init = 0.01, s = 0.01, n_burnin = 100):
     Y, F, FF, idx_deltac, size_deltac, Pc, Lambda_inv, Lambda_inv_sum = ssvi_pack.values()
 
     # chosen initialisations
     lam_init = 1e-4
     mu_sigma_inv = [T * np.eye(N) for c in range(C)]
+    step_size = step_size_init
 
     epsilon = 1e-4
     ELBO = []
@@ -172,26 +173,22 @@ def run_ssvi2(ssvi_pack, Z_width, C, N, K, T, n_steps=1000, step_size = 0.01, n_
     log_lams_history = []
 
     while len(ELBO) < 10 or ELBO[-1] - ELBO[-2] > epsilon:
-        q_lambda, Ds = calc_q_lambda2(n_steps, step_size, lam_init, mu_sigma_inv, Y, F, FF, Lambda_inv, Lambda_inv_sum, size_deltac, Pc, C, N, K)
+        q_lambda, Ds = calc_q_lambda2(n_steps+n_burnin, step_size, lam_init, mu_sigma_inv, Y, F, FF, Lambda_inv, Lambda_inv_sum, size_deltac, Pc, C, N, K)
         q_lambda = q_lambda[n_burnin:]
         Ds = Ds[n_burnin:]
         log_lams = np.log(q_lambda)    
-        log_lams_history.append(log_lams.copy()) 
-        print(log_lams.shape)                
+        log_lams_history.append(log_lams.copy())               
         ess_val = az.ess(log_lams[None, :]).item()
         ess_list.append(ess_val) 
         lam_init = q_lambda[-1]
+        step_size = s * np.var(log_lams)
         exp_mu_deltac, cov_deltac, mu_log_lambda, mu_log_q_lambda, exp_logdet_V_beta0, exp_logdet_V_deltac, mu_lambda_inv_D = calc_exp_lambda2(
             q_lambda, mu_sigma_inv, Ds, Y, F, FF, Lambda_inv, Lambda_inv_sum, size_deltac, Pc, C, N, K)
-        #if len(ELBO)>0:
-        #    elbo_after_lambda = calc_ELBO(V_beta0, exp_logdet_V_deltac, S_bar_sigma, mu_log_lambda, mu_lambda_inv_D, mu_log_q_lambda, C, N, K, T)
 
         S_bar_sigma = calc_S_bar_sigma2(exp_mu_deltac, cov_deltac, Y, F, FF, Z_width, Pc, C, N, K)
         mu_sigma_inv = [T * np.linalg.inv(S_bar_sigma[c]) for c in range(C)]  
-        elbo_after_sigma = calc_ELBO2(exp_logdet_V_beta0, exp_logdet_V_deltac, S_bar_sigma, mu_log_lambda, mu_lambda_inv_D, mu_log_q_lambda, C, N, K, T)
-        #if len(ELBO)>0:
-        #    print(elbo_after_beta0, elbo_after_lambda, elbo_after_sigma)
-        ELBO.append(elbo_after_sigma)
+        elbo = calc_ELBO2(exp_logdet_V_beta0, exp_logdet_V_deltac, S_bar_sigma, mu_log_lambda, mu_lambda_inv_D, mu_log_q_lambda, C, N, K, T)
+        ELBO.append(elbo)
     
     params = {
         'q_lambda': q_lambda,
