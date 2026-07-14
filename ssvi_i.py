@@ -16,37 +16,12 @@ def calc_mu_beta0(mu_lambda1_V, mu_sigma_inv, V_beta0, Y, F, Lambda_inv, Pc, C, 
 def calc_V_deltac(lam, mu_sigma_inv, FF, Lambda_inv, size_deltac, Pc, C, N, K):
     lam = np.atleast_1d(lam)
     n = len(lam)
-    p = N*K
     V_deltac = [np.eye(size_deltac)] * C
     for c in range(C):
         base = Pc.T @ np.kron(mu_sigma_inv[c], FF[c]) @ Pc
-        A, B, D = base[:p, :p], base[:p, p:], base[p:, p:]
-
-        # Generalized eigendecomposition: A = M diag(w) M.T, Lambda_inv[c] = M M.T
-        Lc = np.linalg.cholesky(Lambda_inv[c])          # Lambda_inv[c] = Lc @ Lc.T
-        Lc_inv = np.linalg.solve(Lc, np.eye(p))
-        w, U = np.linalg.eigh(Lc_inv @ A @ Lc_inv.T)
-        M = Lc_inv.T @ U
-
-        # A_lambda^{-1} = M diag(1/(w + 1/lam)) M.T, batched over all lam values
-        diag = w[None, :] + (1.0/lam)[:, None]                  # (n, p)
-        M_scaled = M[None, :, :] * (1.0/diag)[:, None, :]        # (n, p, p)
-        A_lam_inv = np.einsum('nij,kj->nik', M_scaled, M)        # (n, p, p)
-
-        # Schur complement for the rest of the block matrix
-        AB = np.einsum('nij,jk->nik', A_lam_inv, B)               # (n, p, q)
-        S = D[None, :, :] - np.einsum('ji,njk->nik', B, AB)        # (n, q, q)
-        S_inv = np.linalg.inv(S)                                   # only real inverse, q x q
-
-        top_left  = A_lam_inv + np.einsum('nij,njk,nlk->nil', AB, S_inv, AB)
-        top_right = -np.einsum('nij,njk->nik', AB, S_inv)
-
-        V = np.empty((n, size_deltac, size_deltac))
-        V[:, :p, :p] = top_left
-        V[:, :p, p:] = top_right
-        V[:, p:, :p] = np.transpose(top_right, (0, 2, 1))
-        V[:, p:, p:] = S_inv
-        V_deltac[c] = V
+        precision = np.tile(base, (n, 1, 1))
+        precision[:, :N*K, :N*K] += (1/lam)[:, None, None] * Lambda_inv[c]
+        V_deltac[c] = np.linalg.inv(precision)
     return V_deltac
 
 def calc_mu_deltac(lam, beta0, V_deltac, mu_sigma_inv, Y, F, Lambda_inv, size_deltac, Pc, C, N, K):

@@ -26,34 +26,12 @@ def calc_mu_beta02(lam, V_deltac, mu_sigma_inv, V_beta0, Y, F, Lambda_inv, Pc, C
 def calc_V_deltac2(lam, mu_sigma_inv, FF, Lambda_inv, size_deltac, Pc, C, N, K):
     lam = np.atleast_1d(lam)
     n = len(lam)
-    p = N*K
     V_deltac = [np.eye(size_deltac)] * C
     for c in range(C):
         base = Pc.T @ np.kron(mu_sigma_inv[c], FF[c]) @ Pc
-        A, B, D = base[:p, :p], base[:p, p:], base[p:, p:]
-
-        Lc = np.linalg.cholesky(Lambda_inv[c])
-        Lc_inv = np.linalg.solve(Lc, np.eye(p))
-        w, U = np.linalg.eigh(Lc_inv @ A @ Lc_inv.T)
-        M = Lc_inv.T @ U
-
-        diag = w[None, :] + (1.0/lam)[:, None]
-        M_scaled = M[None, :, :] * (1.0/diag)[:, None, :]
-        A_lam_inv = np.einsum('nij,kj->nik', M_scaled, M)
-
-        AB = np.einsum('nij,jk->nik', A_lam_inv, B)
-        S = D[None, :, :] - np.einsum('ji,njk->nik', B, AB)
-        S_inv = np.linalg.inv(S)
-
-        top_left  = A_lam_inv + np.einsum('nij,njk,nlk->nil', AB, S_inv, AB)
-        top_right = -np.einsum('nij,njk->nik', AB, S_inv)
-
-        V = np.empty((n, size_deltac, size_deltac))
-        V[:, :p, :p] = top_left
-        V[:, :p, p:] = top_right
-        V[:, p:, :p] = np.transpose(top_right, (0, 2, 1))
-        V[:, p:, p:] = S_inv
-        V_deltac[c] = V
+        precision = np.tile(base, (n, 1, 1))
+        precision[:, :N*K, :N*K] += (1/lam)[:, None, None] * Lambda_inv[c]
+        V_deltac[c] = np.linalg.inv(precision)
     return V_deltac
 
 def calc_mu_deltac2(lam, beta0, V_deltac, mu_sigma_inv, Y, F, Lambda_inv, size_deltac, Pc, C, N, K):

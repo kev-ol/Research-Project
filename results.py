@@ -5,7 +5,7 @@ from scipy.linalg import eigh
 from joblib import Parallel, delayed
 
 from ssvi_i import calc_V_deltac, calc_mu_deltac
-from ssvi_i_2 import calc_V_beta02, calc_mu_beta02, calc_V_deltac2, calc_mu_deltac2
+from ssvi_c import calc_V_beta02, calc_mu_beta02, calc_V_deltac2, calc_mu_deltac2
 
 
 """Posterior sample reconstruction from each method's variational/MCMC output"""
