@@ -1,4 +1,6 @@
 import numpy as np
+import arviz as az
+
 def calc_V_beta02(lam, V_deltac, Lambda_inv, Lambda_inv_sum, C, N, K):
     lam = np.atleast_1d(lam)
     n = len(lam)
@@ -167,12 +169,15 @@ def run_ssvi2(ssvi_pack, Z_width, C, N, K, T, n_steps=1000, step_size = 0.01, n_
     epsilon = 1e-4
     ELBO = []
     ess_list = []
+    log_lams_history = []
 
     while len(ELBO) < 10 or ELBO[-1] - ELBO[-2] > epsilon:
         q_lambda, Ds = calc_q_lambda2(n_steps, step_size, lam_init, mu_sigma_inv, Y, F, FF, Lambda_inv, Lambda_inv_sum, size_deltac, Pc, C, N, K)
         q_lambda = q_lambda[n_burnin:]
         Ds = Ds[n_burnin:]
-        log_lams = np.log(q_lambda)                     
+        log_lams = np.log(q_lambda)    
+        log_lams_history.append(log_lams.copy()) 
+        print(log_lams.shape)                
         ess_val = az.ess(log_lams[None, :]).item()
         ess_list.append(ess_val) 
         lam_init = q_lambda[-1]
@@ -194,4 +199,4 @@ def run_ssvi2(ssvi_pack, Z_width, C, N, K, T, n_steps=1000, step_size = 0.01, n_
         'cov_deltac': cov_deltac
     }
     
-    return params, ELBO, ess_list
+    return params, ELBO, ess_list, log_lams_history

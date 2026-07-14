@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import invgamma, invwishart, gaussian_kde, wasserstein_distance
+from scipy.linalg import eigh
 from joblib import Parallel, delayed
 
 from ssvi import calc_V_deltac, calc_mu_deltac
@@ -155,10 +156,8 @@ def extract_cov_mfvi(results_mfvi, mfvi_pack, C):
 
 
 def UQF(cov_true, cov_est):
-    inv_cov_est = np.linalg.inv(cov_est)
-    joint = cov_true @ inv_cov_est
-    max_eigenvalue = np.max(np.linalg.eigvalsh(joint))
-    return 1 / max_eigenvalue
+    eigenvalues = eigh(cov_true, cov_est, eigvals_only=True)
+    return 1 / np.max(eigenvalues)
 
 
 def compute_uqf(cov_true, cov_est_list, C):
