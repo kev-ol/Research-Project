@@ -16,12 +16,37 @@ def calc_mu_beta0(mu_lambda1_V, mu_sigma_inv, V_beta0, Y, F, Lambda_inv, Pc, C, 
 def calc_V_deltac(lam, mu_sigma_inv, FF, Lambda_inv, size_deltac, Pc, C, N, K):
     lam = np.atleast_1d(lam)
     n = len(lam)
+    p = N*K
     V_deltac = [np.eye(size_deltac)] * C
     for c in range(C):
         base = Pc.T @ np.kron(mu_sigma_inv[c], FF[c]) @ Pc
-        precision = np.tile(base, (n, 1, 1))
-        precision[:, :N*K, :N*K] += (1/lam)[:, None, None] * Lambda_inv[c]
-        V_deltac[c] = np.linalg.inv(precision)
+        A, B, D = base[:p, :p], base[:p, p:], base[p:, p:]
+
+        # Generalized eigendecomposition: A = M diag(w) M.T, Lambda_inv[c] = M M.T
+        Lc = np.linalg.cholesky(Lambda_inv[c])          # Lambda_inv[c] = Lc @ Lc.T
+        Lc_inv = np.linalg.solve(Lc, np.eye(p))
+        w, U = np.linalg.eigh(Lc_inv @ A @ Lc_inv.T)
+        M = Lc_inv.T @ U
+
+        # A_lambda^{-1} = M diag(1/(w + 1/lam)) M.T, batched over all lam values
+        diag = w[None, :] + (1.0/lam)[:, None]                  # (n, p)
+        M_scaled = M[None, :, :] * (1.0/diag)[:, None, :]        # (n, p, p)
+        A_lam_inv = np.einsum('nij,kj->nik', M_scaled, M)        # (n, p, p)
+
+        # Schur complement for the rest of the block matrix
+        AB = np.einsum('nij,jk->nik', A_lam_inv, B)               # (n, p, q)
+        S = D[None, :, :] - np.einsum('ji,njk->nik', B, AB)        # (n, q, q)
+        S_inv = np.linalg.inv(S)                                   # only real inverse, q x q
+
+        top_left  = A_lam_inv + np.einsum('nij,njk,nlk->nil', AB, S_inv, AB)
+        top_right = -np.einsum('nij,njk->nik', AB, S_inv)
+
+        V = np.empty((n, size_deltac, size_deltac))
+        V[:, :p, :p] = top_left
+        V[:, :p, p:] = top_right
+        V[:, p:, :p] = np.transpose(top_right, (0, 2, 1))
+        V[:, p:, p:] = S_inv
+        V_deltac[c] = V
     return V_deltac
 
 def calc_mu_deltac(lam, beta0, V_deltac, mu_sigma_inv, Y, F, Lambda_inv, size_deltac, Pc, C, N, K):
@@ -59,10 +84,12 @@ def calc_D(lam, V_beta0, mu_beta0, mu_sigma_inv, Y, F, FF, Lambda_inv, size_delt
 
     G = [lam**-1 * V_deltac[c][:N*K,:N*K] @ Lambda_inv[c] - np.eye(N*K) for c in range(C)]
 
-    D = [np.trace(Lambda_inv[c] @ (V_deltac[c][:N*K,:N*K]
-                                   + np.outer(mu_bar_betac[c]-mu_beta0, mu_bar_betac[c]-mu_beta0)
-                                   + G[c] @ V_beta0 @ G[c].T)) 
-                                   for c in range(C)]
+    D = [np.einsum('ij,ji->', Lambda_inv[c],
+               V_deltac[c][:N*K,:N*K]
+               + np.outer(mu_bar_betac[c]-mu_beta0, mu_bar_betac[c]-mu_beta0)
+               + G[c] @ V_beta0 @ G[c].T)
+               for c in range(C)]
+    
     return D
 
 def calc_q_lambda(n_steps, step_size, lam_init, V_beta0, mu_beta0, mu_sigma_inv, Y, F, FF, Lambda_inv, size_deltac, Pc, C, N, K):
@@ -148,8 +175,8 @@ def calc_ELBO(V_beta0, exp_logdet_V_deltac, S_bar_sigma, mu_log_lambda, mu_lambd
 
 
 
-def run_ssvi(ssvi_pack, Z_width, C, N, K, T, n_steps=1000, step_size_init =  0.01, s = 0.01, n_burnin = 100):
-    Y, F, FF, idx_deltac, size_deltac, Pc, Lambda_inv, Lambda_inv_sum = ssvi_pack.values()
+def run_ssvi_i(ssvi_i_pack, Z_width, C, N, K, T, n_steps=1000, step_size_init =  0.01, s = 0.01, n_burnin = 100):
+    Y, F, FF, idx_deltac, size_deltac, Pc, Lambda_inv, Lambda_inv_sum = ssvi_i_pack.values()
 
     # chosen initialisations
     lam_init = 1e-4

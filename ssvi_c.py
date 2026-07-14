@@ -26,12 +26,34 @@ def calc_mu_beta02(lam, V_deltac, mu_sigma_inv, V_beta0, Y, F, Lambda_inv, Pc, C
 def calc_V_deltac2(lam, mu_sigma_inv, FF, Lambda_inv, size_deltac, Pc, C, N, K):
     lam = np.atleast_1d(lam)
     n = len(lam)
+    p = N*K
     V_deltac = [np.eye(size_deltac)] * C
     for c in range(C):
         base = Pc.T @ np.kron(mu_sigma_inv[c], FF[c]) @ Pc
-        precision = np.tile(base, (n, 1, 1))
-        precision[:, :N*K, :N*K] += (1/lam)[:, None, None] * Lambda_inv[c]
-        V_deltac[c] = np.linalg.inv(precision)
+        A, B, D = base[:p, :p], base[:p, p:], base[p:, p:]
+
+        Lc = np.linalg.cholesky(Lambda_inv[c])
+        Lc_inv = np.linalg.solve(Lc, np.eye(p))
+        w, U = np.linalg.eigh(Lc_inv @ A @ Lc_inv.T)
+        M = Lc_inv.T @ U
+
+        diag = w[None, :] + (1.0/lam)[:, None]
+        M_scaled = M[None, :, :] * (1.0/diag)[:, None, :]
+        A_lam_inv = np.einsum('nij,kj->nik', M_scaled, M)
+
+        AB = np.einsum('nij,jk->nik', A_lam_inv, B)
+        S = D[None, :, :] - np.einsum('ji,njk->nik', B, AB)
+        S_inv = np.linalg.inv(S)
+
+        top_left  = A_lam_inv + np.einsum('nij,njk,nlk->nil', AB, S_inv, AB)
+        top_right = -np.einsum('nij,njk->nik', AB, S_inv)
+
+        V = np.empty((n, size_deltac, size_deltac))
+        V[:, :p, :p] = top_left
+        V[:, :p, p:] = top_right
+        V[:, p:, :p] = np.transpose(top_right, (0, 2, 1))
+        V[:, p:, p:] = S_inv
+        V_deltac[c] = V
     return V_deltac
 
 def calc_mu_deltac2(lam, beta0, V_deltac, mu_sigma_inv, Y, F, Lambda_inv, size_deltac, Pc, C, N, K):
@@ -75,10 +97,12 @@ def calc_D2(lam, mu_sigma_inv, Y, F, FF, Lambda_inv, Lambda_inv_sum, size_deltac
 
     G = [lam**-1 * V_deltac[c][:N*K,:N*K] @ Lambda_inv[c] - np.eye(N*K) for c in range(C)]
 
-    D = [np.trace(Lambda_inv[c] @ (V_deltac[c][:N*K,:N*K]
-                                   + np.outer(mu_bar_betac[c]-mu_beta0, mu_bar_betac[c]-mu_beta0)
-                                   + G[c] @ V_beta0 @ G[c].T))
-                                   for c in range(C)]
+    D = [np.einsum('ij,ji->', Lambda_inv[c],
+               V_deltac[c][:N*K,:N*K]
+               + np.outer(mu_bar_betac[c]-mu_beta0, mu_bar_betac[c]-mu_beta0)
+               + G[c] @ V_beta0 @ G[c].T) 
+               for c in range(C)]
+    
     return D
 
 def calc_q_lambda2(n_steps, step_size, lam_init, mu_sigma_inv, Y, F, FF, Lambda_inv, Lambda_inv_sum, size_deltac, Pc, C, N, K):
@@ -159,8 +183,8 @@ def calc_ELBO2(exp_logdet_V_beta0, exp_logdet_V_deltac, S_bar_sigma, mu_log_lamb
     return elbo
 
 
-def run_ssvi2(ssvi_pack, Z_width, C, N, K, T, n_steps=1000, step_size_init = 0.01, s = 0.01, n_burnin = 100):
-    Y, F, FF, idx_deltac, size_deltac, Pc, Lambda_inv, Lambda_inv_sum = ssvi_pack.values()
+def run_ssvi_c(ssvi_i_pack, Z_width, C, N, K, T, n_steps=1000, step_size_init = 0.01, s = 0.01, n_burnin = 100):
+    Y, F, FF, idx_deltac, size_deltac, Pc, Lambda_inv, Lambda_inv_sum = ssvi_i_pack.values()
 
     # chosen initialisations
     lam_init = 1e-4

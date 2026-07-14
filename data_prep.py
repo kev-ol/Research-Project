@@ -93,11 +93,11 @@ def prep_data(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2):
                  'idx_deltac': idx_deltac, 'size_gammac': size_gammac, 'size_deltac': size_deltac,
                  'Pc': Pc, 'Big_S': Big_S,
                  'Lambda_inv': Lambda_inv, 'Lambda_inv_sum': Lambda_inv_sum}
-    ssvi_pack = {'Y': Y, 'F': F, 'FF': FF, 'idx_deltac': idx_deltac, 'size_deltac': size_deltac,
+    ssvi_i_pack = {'Y': Y, 'F': F, 'FF': FF, 'idx_deltac': idx_deltac, 'size_deltac': size_deltac,
                  'Pc': Pc, 'Lambda_inv': Lambda_inv, 'Lambda_inv_sum': Lambda_inv_sum}
     gibbs_pack =  {'Y': Y, 'X': X, 'XX': XX, 'Z': Z, 'ZZ': ZZ,
                  'Lambda_inv': Lambda_inv, 'Lambda_inv_sum': Lambda_inv_sum}
     gibbs_pack_og =  {'Y': Y, 'X': X, 'Z': Z,
                  'Lambda_inv': Lambda_inv, 'Lambda_inv_sum_inv': Lambda_inv_sum_inv}
 
-    return mfvi_pack, ssvi_pack, gibbs_pack, gibbs_pack_og
+    return mfvi_pack, ssvi_i_pack, gibbs_pack, gibbs_pack_og

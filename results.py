@@ -4,8 +4,8 @@ from scipy.stats import invgamma, invwishart, gaussian_kde, wasserstein_distance
 from scipy.linalg import eigh
 from joblib import Parallel, delayed
 
-from ssvi import calc_V_deltac, calc_mu_deltac
-from ssvi_2 import calc_V_beta02, calc_mu_beta02, calc_V_deltac2, calc_mu_deltac2
+from ssvi_i import calc_V_deltac, calc_mu_deltac
+from ssvi_i_2 import calc_V_beta02, calc_mu_beta02, calc_V_deltac2, calc_mu_deltac2
 
 
 """Posterior sample reconstruction from each method's variational/MCMC output"""
@@ -42,10 +42,10 @@ def sample_from_mfvi(results_mfvi, mfvi_pack, C, N, K, T, n_samples=10000):
     }
 
 
-def sample_from_ssvi(results_ssvi, ssvi_pack, C, N, K, T, n_samples=10000):
-    mu_beta0, V_beta0, q_lambda_chain, S_bar_sigma, cov_deltac = results_ssvi.values()
+def sample_from_ssvi_i(results_ssvi_i, ssvi_i_pack, C, N, K, T, n_samples=10000):
+    mu_beta0, V_beta0, q_lambda_chain, S_bar_sigma, cov_deltac = results_ssvi_i.values()
     mu_sigma_inv = [T * np.linalg.inv(S_bar_sigma[c]) for c in range(C)]
-    Y, F, FF, idx_deltac, size_deltac, Pc, Lambda_inv, Lambda_inv_sum = ssvi_pack.values()
+    Y, F, FF, idx_deltac, size_deltac, Pc, Lambda_inv, Lambda_inv_sum = ssvi_i_pack.values()
 
     # lambda: sample from a KDE fit to the converged ULA chain (log-space, since lambda > 0)
     lam_chain = np.asarray(q_lambda_chain)
@@ -83,10 +83,10 @@ def sample_from_ssvi(results_ssvi, ssvi_pack, C, N, K, T, n_samples=10000):
     }
 
 
-def sample_from_ssvi2(results_ssvi2, ssvi_pack, C, N, K, T, n_samples=10000):
-    q_lambda_chain, S_bar_sigma, cov_deltac = results_ssvi2.values()
+def sample_from_ssvi_c(results_ssvi_c, ssvi_i_pack, C, N, K, T, n_samples=10000):
+    q_lambda_chain, S_bar_sigma, cov_deltac = results_ssvi_c.values()
     mu_sigma_inv = [T * np.linalg.inv(S_bar_sigma[c]) for c in range(C)]
-    Y, F, FF, idx_deltac, size_deltac, Pc, Lambda_inv, Lambda_inv_sum = ssvi_pack.values()
+    Y, F, FF, idx_deltac, size_deltac, Pc, Lambda_inv, Lambda_inv_sum = ssvi_i_pack.values()
 
     # lambda: sample from a KDE fit to the converged ULA chain (log-space, since lambda > 0)
     lam_chain = np.asarray(q_lambda_chain)
@@ -266,22 +266,26 @@ def plot_accuracy_boxplots(results_faes, method_name, C):
     fig, axes = plt.subplots(2, 3, figsize=(15, 10))
 
     # beta_c: one box per country
-    axes[0, 0].boxplot([results_faes['beta_c'][c] for c in range(C)], labels=country_labels)
+    beta_c_data = [results_faes['beta_c'][c] for c in range(C)]
+    axes[0, 0].boxplot(beta_c_data, labels=country_labels)
     axes[0, 0].set_title(r'$\beta_c$')
     axes[0, 0].set_ylabel('Accuracy (%)')
 
     # gamma_c: one box per country
-    axes[0, 1].boxplot([results_faes['gamma_c'][c] for c in range(C)], labels=country_labels)
+    gamma_c_data = [results_faes['gamma_c'][c] for c in range(C)]
+    axes[0, 1].boxplot(gamma_c_data, labels=country_labels)
     axes[0, 1].set_title(r'$\gamma_c$')
     axes[0, 1].set_ylabel('Accuracy (%)')
 
     # Sigma_c diagonals: one box per country
-    axes[0, 2].boxplot([results_faes['Sigma_c'][c] for c in range(C)], labels=country_labels)
+    sigma_c_data = [results_faes['Sigma_c'][c] for c in range(C)]
+    axes[0, 2].boxplot(sigma_c_data, labels=country_labels)
     axes[0, 2].set_title(r'$\Sigma_c$ diagonals')
     axes[0, 2].set_ylabel('Accuracy (%)')
 
     # beta_0: single box over all N*K coefficients
-    axes[1, 0].boxplot([results_faes['beta_0']], labels=[r'$\beta_0$'])
+    beta_0_data = [results_faes['beta_0']]
+    axes[1, 0].boxplot(beta_0_data, labels=[r'$\beta_0$'])
     axes[1, 0].set_ylabel('Accuracy (%)')
 
     # lambda: single value, shown as a point
@@ -293,16 +297,30 @@ def plot_accuracy_boxplots(results_faes, method_name, C):
 
     axes[1, 2].set_visible(False)
 
+    # data-driven y-limits per subplot, except lambda (kept at full 0-100 range)
+    boxplot_axes_data = {
+        (0, 0): beta_c_data,
+        (0, 1): gamma_c_data,
+        (0, 2): sigma_c_data,
+        (1, 0): beta_0_data,
+    }
+
+    for (row, col), data in boxplot_axes_data.items():
+        ax = axes[row, col]
+        all_vals = np.concatenate([np.asarray(d) for d in data])
+        lo, hi = np.min(all_vals), np.max(all_vals)
+        pad = max((hi - lo) * 0.1, 1.0)
+        ax.set_ylim(max(0, lo - pad), min(100, hi + pad))
+
+    axes[1, 1].set_ylim(0, 100)  # lambda: keep full range
+
     for ax in axes.flat:
         if ax.get_visible():
-            ax.set_ylim(0, 100)
-            ax.axhline(y=95, color='grey', linestyle='--', linewidth=0.8)
             ax.grid(axis='y', alpha=0.3)
 
     fig.suptitle(f'Faes et al. Accuracy: {method_name} vs Gibbs', fontsize=14)
     plt.tight_layout()
     plt.show()
-
 
 """Impulse Response Functions"""
 
@@ -483,8 +501,8 @@ def plot_irfs_comparison(gibbs_irfs, vi_irfs, country_names, variable_names, vi_
             if c == 0:
                 ax.set_ylabel(variable_names[n])
             if n == N - 1:
-                ax.set_xlabel("Horizon")
-
+                ax.set_xlabel("Horizon") 
+    fig.suptitle(f"Gibbs vs {vi_label}: Impulse Response Comparison", y=1.02)
     plt.tight_layout()
     plt.show()
 
@@ -512,8 +530,8 @@ def compute_wasserstein_curve(gibbs_irfs, vi_irfs):
 def plot_wasserstein_grid_comparison(distances_dict, country_names, variable_names):
     """
     distances_dict: dict mapping method label -> (C, H+1, N) array from
-        compute_wasserstein_curve, e.g. {"mfvi": wass_mfvi, "SSVI": wass_ssvi,
-        "SSVI2": wass_ssvi2}
+        compute_wasserstein_curve, e.g. {"mfvi": wass_mfvi, "SSVI_I": wass_ssvi_i,
+        "SSVI_C": wass_ssvi_c}
     Layout matches the IRF grid: rows = variables, columns = countries.
     Each panel overlays one line per method.
     """
