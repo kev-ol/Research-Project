@@ -110,8 +110,10 @@ def run_pipeline(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2,
     )
 
     cache_path.parent.mkdir(exist_ok=True)
-    with open(cache_path, "wb") as f:
+    tmp_path = cache_path.with_suffix(".tmp")
+    with open(tmp_path, "wb") as f:
         pickle.dump(results, f)
+    tmp_path.rename(cache_path)
     return results
 
 
