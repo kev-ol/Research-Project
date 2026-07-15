@@ -31,7 +31,7 @@ class PipelineConfig:
 
 def run_pipeline(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2,
                   config: PipelineConfig, Lambda=None, cache_dir="cache", force_recompute=False):
-    cache_path = Path(cache_dir) / f"{config.name}_rep{replicate_id}.pkl"
+    cache_path = Path(cache_dir) / f"{config.name}.pkl"
     if cache_path.exists() and not force_recompute:
         with open(cache_path, "rb") as f:
             return pickle.load(f)
@@ -41,9 +41,13 @@ def run_pipeline(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2,
     )
 
     results_mfvi, ELBO_mfvi = run_mfvi(mfvi_pack, Z_width, C, N, K, T)
+    print("MFVI COMPLETE")
     results_ssvi_i, ELBO_ssvi_i, ess_i, log_lams_i = run_ssvi_i(ssvi_i_pack, Z_width, C, N, K, T, **config.ssvi_i_kwargs)
+    print("SSVI-I COMPLETE")
     results_ssvi_c, ELBO_ssvi_c, ess_c, log_lams_c = run_ssvi_c(ssvi_i_pack, Z_width, C, N, K, T, **config.ssvi_c_kwargs)
+    print("SSVI-C COMPLETE")
     results_gibbs, ess, rhat = run_gibbs(gibbs_pack, C, N, K, Z_width, T, **config.gibbs_kwargs)
+    print("GIBBS COMPLETE")
 
     cov_true = compute_cov_true(results_gibbs, C)
     cov_mfvi = extract_cov_mfvi(results_mfvi, mfvi_pack, C)

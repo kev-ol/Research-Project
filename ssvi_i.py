@@ -77,7 +77,15 @@ def calc_q_lambda(n_steps, step_size, lam_init, V_beta0, mu_beta0, mu_sigma_inv,
         log_lams[n] = l
         # score function after transforming density to log space
         score = np.sum(D)/(2*lam) - (C*N*K - 1)/2
-        l = l + step_size * score + np.sqrt(2*step_size) * np.random.normal()
+        max_tries = 20
+        for _ in range(max_tries):
+            l_new = l + step_size*score + np.sqrt(2*step_size)*np.random.normal()
+            if -50 < l_new < 50:
+                break
+        else:
+            l_new = np.clip(l_new, -50, 50)  # fallback if it never lands in range
+
+        l = l_new
     lams = np.exp(log_lams)
     return lams, Ds
 
@@ -104,9 +112,8 @@ def calc_exp_lambda(lams, mu_sigma_inv, mu_beta0, V_beta0, Ds, Y, F, FF, Lambda_
     sorted_log_lams = np.sort(log_lams)
     n = len(sorted_log_lams)
     m = int(np.sqrt(n))
-    padded = np.concatenate([np.full(m, sorted_log_lams[0]), sorted_log_lams, np.full(m, sorted_log_lams[-1])])
-    diffs = padded[2*m:] - padded[:-2*m]
-    mu_log_q_lambda = -np.mean(np.log(n * diffs / (2*m))) - mu_log_lambda
+    diffs = sorted_log_lams[2*m:] - sorted_log_lams[:-2*m]
+    mu_log_q_lambda = -np.mean(np.log(n * diffs / (2*m))) - mu_log_lambda  
 
     """"
     counts, edges = np.histogram(log_lams, bins=50, density=True)
