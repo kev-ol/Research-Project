@@ -2,13 +2,13 @@ import numpy as np
 
 """Preprocessing Data"""
 
-def prep_data(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2):
+def prep_data(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2, Lambda = None):
     
     F = np.zeros((C, T, K+Z_width))
     X = np.zeros((C, T, K))
     Z = np.zeros((T, Z_width))
     
-    # concatenate non-exchanngeabl prior data lags
+    # concatenate non-exchangeable prior data lags
     for t in range(L, T+L):
         z_lags = np.concatenate(
             [Z1[t-l] for l in L_z1] +
@@ -60,18 +60,19 @@ def prep_data(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2):
             row_pos = n*(K + Z_width) + K + z      # position in the interleaved output
             Pc[row_pos, col_pos] = 1
 
-    # make Lambda for Minnesota prior
-    Lambda = np.zeros((C, N*K, N*K))
-    for c in range(C):
-        var_y = np.var(Y[c, :, :], axis=0)  # (N,)
-        var_w = np.var(W, axis=0) 
-        var_all = np.append(var_y, var_w)
-        var_index = ([n for l in range(L) for n in range(N)] +
-                [N + j for l in range(len(L_w)) for j in range(N_w)])
+    if Lambda is None:
+        # make Lambda for Minnesota prior
+        Lambda = np.zeros((C, N*K, N*K))
+        for c in range(C):
+            var_y = np.var(Y[c, :, :], axis=0)  # (N,)
+            var_w = np.var(W, axis=0) 
+            var_all = np.append(var_y, var_w)
+            var_index = ([n for l in range(L) for n in range(N)] +
+                    [N + j for l in range(len(L_w)) for j in range(N_w)])
 
-        diag = np.array([var_y[n] / var_all[var_index[k]]
-                        for n in range(N) for k in range(K)])
-        Lambda[c] = np.diag(diag)
+            diag = np.array([var_y[n] / var_all[var_index[k]]
+                            for n in range(N) for k in range(K)])
+            Lambda[c] = np.diag(diag)
 
     # perform inverses now
     Lambda_inv = np.array([np.diag(1.0 / np.diag(Lambda[c])) for c in range(C)])

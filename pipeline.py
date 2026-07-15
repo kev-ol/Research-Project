@@ -2,18 +2,14 @@ from dataclasses import dataclass, field
 import pickle
 from pathlib import Path
 import numpy as np
-import matplotlib.pyplot as plt
-import pandas as pd
-import arviz as az
 from mfvi import run_mfvi
 from ssvi_i import run_ssvi_i
 from ssvi_c import run_ssvi_c
 from gibbs import run_gibbs
-from gibbs_og import run_gibbs_og
 from data_prep import prep_data
 from results import (
     sample_from_mfvi, sample_from_ssvi_i, sample_from_ssvi_c,
-    compute_cov_true, extract_cov_mfvi, UQF, compute_uqf,
+    compute_cov_true, extract_cov_mfvi, compute_uqf,
     prepare_gibbs_faes_arrays, compute_faes_scores, plot_accuracy_boxplots,
     compute_irfs, plot_irfs_comparison,
     compute_wasserstein_curve, plot_wasserstein_grid_comparison,
@@ -22,9 +18,9 @@ from results import (
 @dataclass
 class PipelineConfig:
     name: str                      # used for cache filename + plot titles
-    sign_pattern: tuple
     country_names: list
     variable_names: list
+    sign_pattern: tuple = ((2, 2, 1.0), (3, 2, -1.0), (2, 3, 1.0), (3, 3, 1.0))
     # method hyperparams
     ssvi_i_kwargs: dict = field(default_factory=lambda: dict(n_steps=1000, step_size_init=0.01, s=0.2, n_burnin=100))
     ssvi_c_kwargs: dict = field(default_factory=lambda: dict(n_steps=1000, step_size_init=1, s=0.1, n_burnin=100))
@@ -34,14 +30,14 @@ class PipelineConfig:
 
 
 def run_pipeline(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2,
-                  config: PipelineConfig, cache_dir="cache", force_recompute=False):
-    cache_path = Path(cache_dir) / f"{config.name}.pkl"
+                  config: PipelineConfig, Lambda=None, cache_dir="cache", force_recompute=False):
+    cache_path = Path(cache_dir) / f"{config.name}_rep{replicate_id}.pkl"
     if cache_path.exists() and not force_recompute:
         with open(cache_path, "rb") as f:
             return pickle.load(f)
 
     mfvi_pack, ssvi_i_pack, gibbs_pack, gibbs_pack_og = prep_data(
-        Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2,
+        Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2, Lambda
     )
 
     results_mfvi, ELBO_mfvi = run_mfvi(mfvi_pack, Z_width, C, N, K, T)
