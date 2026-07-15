@@ -59,11 +59,10 @@ def calc_D(lam, V_beta0, mu_beta0, mu_sigma_inv, Y, F, FF, Lambda_inv, size_delt
 
     G = [lam**-1 * V_deltac[c][:N*K,:N*K] @ Lambda_inv[c] - np.eye(N*K) for c in range(C)]
 
-    D = [np.einsum('ij,ji->', Lambda_inv[c],
-               V_deltac[c][:N*K,:N*K]
-               + np.outer(mu_bar_betac[c]-mu_beta0, mu_bar_betac[c]-mu_beta0)
-               + G[c] @ V_beta0 @ G[c].T)
-               for c in range(C)]
+    D = [np.trace(Lambda_inv[c] @ (V_deltac[c][:N*K,:N*K]
+                               + np.outer(mu_bar_betac[c]-mu_beta0, mu_bar_betac[c]-mu_beta0)
+                               + G[c] @ V_beta0 @ G[c].T)) 
+                               for c in range(C)]
     
     return D
 
