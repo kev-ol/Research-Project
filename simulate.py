@@ -53,7 +53,7 @@ def _simulate_exog(real_series, T_total, rng):
 
 
 def simulate_data(Y_real, W_real, Z1_real, Z2_real, results_gibbs,
-                   C, T, N, N_w, L, L_w, L_z1, L_z2, K, Z_width,
+                   C, T, N, N_w, L, L_w, L_z1, L_z2, K, Z_width, gamma_var = 0.1,
                    burn=50, seed=None):
     """Simulate a (C, T, N) panel calibrated to the real data and a real Gibbs run.
 
@@ -118,7 +118,7 @@ def simulate_data(Y_real, W_real, Z1_real, Z2_real, results_gibbs,
             betas[c, :, :N*L] *= 0.95 / radius
 
     # true gamma_c: single combined block over [Z1 lags, Z2 lags], matching data_prep.py's Z
-    gamma_c = rng.normal(0, 0.2, size=(C, N, Z_width))
+    gamma_c = rng.normal(0, gamma_var, size=(C, N, Z_width))
 
     # innovations
     innovations = np.zeros((T_total, C, N))
