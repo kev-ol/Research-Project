@@ -36,7 +36,7 @@ def run_pipeline(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2,
         with open(cache_path, "rb") as f:
             return pickle.load(f)
 
-    mfvi_pack, ssvi_i_pack, gibbs_pack, gibbs_pack_og = prep_data(
+    mfvi_pack, ssvi_i_pack, gibbs_pack = prep_data(
         Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2, Lambda
     )
 

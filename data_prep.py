@@ -25,6 +25,29 @@ def prep_data(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2, Lambda
             X[c, t-L, :] = lags
             F[c, t-L, :] = np.concatenate([lags, Z[t-L, :]])
 
+    if Lambda is None:
+        # make Lambda for Minnesota prior
+        def ar_resid_var(x, L):
+            # x: (T,) univariate series; returns residual variance of AR(L) with constant
+            T = len(x)
+            Y_ = x[L:]
+            X_ = np.column_stack([x[L-l:T-l] for l in range(1, L+1)] + [np.ones(T-L)])
+            coef, _, _, _ = np.linalg.lstsq(X_, Y_, rcond=None)
+            resid = Y_ - X_ @ coef
+            return np.var(resid)
+
+        Lambda = np.zeros((C, N*K, N*K))
+        for c in range(C):
+            var_y = np.array([ar_resid_var(Y[c, :, n], L) for n in range(N)])
+            var_w = np.array([ar_resid_var(W[:, j], L) for j in range(W.shape[1])])
+            var_all = np.append(var_y, var_w)
+            var_index = ([n for l in range(L) for n in range(N)] +
+                    [N + j for l in range(len(L_w)) for j in range(N_w)])
+
+            diag = np.array([var_y[n] / var_all[var_index[k]]
+                            for n in range(N) for k in range(K)])
+            Lambda[c] = np.diag(diag)
+
     # get rid of extra data used for lags
     Y = Y[:, L:, :]
     W = W[L:, :]
@@ -60,20 +83,6 @@ def prep_data(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2, Lambda
             row_pos = n*(K + Z_width) + K + z      # position in the interleaved output
             Pc[row_pos, col_pos] = 1
 
-    if Lambda is None:
-        # make Lambda for Minnesota prior
-        Lambda = np.zeros((C, N*K, N*K))
-        for c in range(C):
-            var_y = np.var(Y[c, :, :], axis=0)  # (N,)
-            var_w = np.var(W, axis=0) 
-            var_all = np.append(var_y, var_w)
-            var_index = ([n for l in range(L) for n in range(N)] +
-                    [N + j for l in range(len(L_w)) for j in range(N_w)])
-
-            diag = np.array([var_y[n] / var_all[var_index[k]]
-                            for n in range(N) for k in range(K)])
-            Lambda[c] = np.diag(diag)
-
     # perform inverses now
     Lambda_inv = np.array([np.diag(1.0 / np.diag(Lambda[c])) for c in range(C)])
     Lambda_inv_sum = np.sum(Lambda_inv, axis=0)
@@ -101,4 +110,4 @@ def prep_data(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2, Lambda
     gibbs_pack_og =  {'Y': Y, 'X': X, 'Z': Z,
                  'Lambda_inv': Lambda_inv, 'Lambda_inv_sum_inv': Lambda_inv_sum_inv}
 
-    return mfvi_pack, ssvi_i_pack, gibbs_pack, gibbs_pack_og
+    return mfvi_pack, ssvi_i_pack, gibbs_pack
