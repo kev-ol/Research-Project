@@ -82,10 +82,12 @@ def calc_D2(lam, mu_sigma_inv, Y, F, FF, Lambda_inv, Lambda_inv_sum, size_deltac
     
     return D
 
-def calc_q_lambda2(n_steps, step_size, lam_init, mu_sigma_inv, Y, F, FF, Lambda_inv, Lambda_inv_sum, size_deltac, Pc, C, N, K):
+def calc_q_lambda2(n_steps, s, lam_init, mu_sigma_inv, Y, F, FF, Lambda_inv, Lambda_inv_sum, size_deltac, Pc, C, N, K):
     log_lams = np.zeros(n_steps)
     Ds = np.zeros((n_steps, C))
     l = np.log(lam_init)
+    v = 0
+    beta = 0.9
     for n in range(n_steps):
         lam = np.exp(l)
         D = calc_D2(lam, mu_sigma_inv, Y, F, FF, Lambda_inv, Lambda_inv_sum, size_deltac, Pc, C, N, K)
@@ -93,6 +95,8 @@ def calc_q_lambda2(n_steps, step_size, lam_init, mu_sigma_inv, Y, F, FF, Lambda_
         log_lams[n] = l
         # score function after transforming density to log space
         score = np.sum(D)/(2*lam) - (C*N*K - 1)/2
+        v = beta * v + (1 - beta) * score**2
+        step_size = s / (np.sqrt(v) + 1e-6)
         max_tries = 20
         for _ in range(max_tries):
             l_new = l + step_size*score + np.sqrt(2*step_size)*np.random.normal()
@@ -168,13 +172,12 @@ def calc_ELBO2(exp_logdet_V_beta0, exp_logdet_V_deltac, S_bar_sigma, mu_log_lamb
     return elbo
 
 
-def run_ssvi_c(ssvi_i_pack, Z_width, C, N, K, T, n_steps=1000, step_size_init = 0.01, s = 0.01, n_burnin = 100):
+def run_ssvi_c(ssvi_i_pack, Z_width, C, N, K, T, n_steps=1000, s = 0.01, n_burnin = 100):
     Y, F, FF, idx_deltac, size_deltac, Pc, Lambda_inv, Lambda_inv_sum = ssvi_i_pack.values()
 
     # chosen initialisations
     lam_init = 1e-4
     mu_sigma_inv = [T * np.eye(N) for c in range(C)]
-    step_size = step_size_init
 
     epsilon = 0.05
     ELBO = []
@@ -182,7 +185,7 @@ def run_ssvi_c(ssvi_i_pack, Z_width, C, N, K, T, n_steps=1000, step_size_init = 
     log_lams_history = []
 
     while len(ELBO) < 10 or np.mean([abs(ELBO[-i] - ELBO[-i-1]) for i in range(1, 4)]) > epsilon:
-        q_lambda, Ds = calc_q_lambda2(n_steps+n_burnin, step_size, lam_init, mu_sigma_inv, Y, F, FF, Lambda_inv, Lambda_inv_sum, size_deltac, Pc, C, N, K)
+        q_lambda, Ds = calc_q_lambda2(n_steps+n_burnin, s, lam_init, mu_sigma_inv, Y, F, FF, Lambda_inv, Lambda_inv_sum, size_deltac, Pc, C, N, K)
         q_lambda = q_lambda[n_burnin:]
         Ds = Ds[n_burnin:]
         log_lams = np.log(q_lambda)    

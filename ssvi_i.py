@@ -66,10 +66,12 @@ def calc_D(lam, V_beta0, mu_beta0, mu_sigma_inv, Y, F, FF, Lambda_inv, size_delt
     
     return D
 
-def calc_q_lambda(n_steps, step_size, lam_init, V_beta0, mu_beta0, mu_sigma_inv, Y, F, FF, Lambda_inv, size_deltac, Pc, C, N, K):
+def calc_q_lambda(n_steps, s, lam_init, V_beta0, mu_beta0, mu_sigma_inv, Y, F, FF, Lambda_inv, size_deltac, Pc, C, N, K):
     log_lams = np.zeros(n_steps)
     Ds = np.zeros((n_steps, C))
     l = np.log(lam_init)
+    v = 0
+    beta = 0.9
     for n in range(n_steps):
         lam = np.exp(l)
         D = calc_D(lam, V_beta0, mu_beta0, mu_sigma_inv, Y, F, FF, Lambda_inv, size_deltac, Pc, C, N, K)
@@ -77,6 +79,8 @@ def calc_q_lambda(n_steps, step_size, lam_init, V_beta0, mu_beta0, mu_sigma_inv,
         log_lams[n] = l
         # score function after transforming density to log space
         score = np.sum(D)/(2*lam) - (C*N*K - 1)/2
+        v = beta * v + (1 - beta) * score**2
+        step_size = s / (np.sqrt(v) + 1e-6)
         max_tries = 20
         for _ in range(max_tries):
             l_new = l + step_size*score + np.sqrt(2*step_size)*np.random.normal()
@@ -157,7 +161,7 @@ def calc_ELBO(V_beta0, exp_logdet_V_deltac, S_bar_sigma, mu_log_lambda, mu_lambd
 
 
 
-def run_ssvi_i(ssvi_i_pack, Z_width, C, N, K, T, n_steps=1000, step_size_init =  0.01, s = 0.01, n_burnin = 100):
+def run_ssvi_i(ssvi_i_pack, Z_width, C, N, K, T, n_steps=1000, s = 0.01, n_burnin = 100):
     Y, F, FF, idx_deltac, size_deltac, Pc, Lambda_inv, Lambda_inv_sum = ssvi_i_pack.values()
 
     # chosen initialisations
@@ -166,7 +170,6 @@ def run_ssvi_i(ssvi_i_pack, Z_width, C, N, K, T, n_steps=1000, step_size_init = 
     mu_lambda1_V = [mu_lambda_inv * np.eye(size_deltac) for _ in range(C)]
     mu_lambda2_V = [mu_lambda_inv**2 * np.eye(size_deltac) for _ in range(C)]
     mu_sigma_inv = [T * np.eye(N) for c in range(C)]
-    step_size = step_size_init
 
     epsilon = 0.05
     ELBO = []
@@ -177,7 +180,7 @@ def run_ssvi_i(ssvi_i_pack, Z_width, C, N, K, T, n_steps=1000, step_size_init = 
         V_beta0 = calc_V_beta0(mu_lambda_inv, mu_lambda2_V, Lambda_inv, Lambda_inv_sum, C, N, K)
         mu_beta0 = calc_mu_beta0(mu_lambda1_V, mu_sigma_inv, V_beta0, Y, F, Lambda_inv, Pc, C, N, K)
 
-        q_lambda, Ds = calc_q_lambda(n_steps+n_burnin, step_size, lam_init, V_beta0, mu_beta0, mu_sigma_inv, Y, F, FF, Lambda_inv, size_deltac, Pc, C, N, K)
+        q_lambda, Ds = calc_q_lambda(n_steps+n_burnin, s, lam_init, V_beta0, mu_beta0, mu_sigma_inv, Y, F, FF, Lambda_inv, size_deltac, Pc, C, N, K)
         q_lambda = q_lambda[n_burnin:]
         Ds = Ds[n_burnin:]
         log_lams = np.log(q_lambda)    
@@ -185,7 +188,6 @@ def run_ssvi_i(ssvi_i_pack, Z_width, C, N, K, T, n_steps=1000, step_size_init = 
         ess_val = az.ess(log_lams[None, :]).item()
         ess_list.append(ess_val)
         lam_init = q_lambda[-1]
-        step_size = s * np.var(log_lams)
         mu_lambda_inv, mu_lambda1_V, mu_lambda2_V, exp_mu_deltac, cov_deltac, mu_log_lambda, mu_log_q_lambda, exp_logdet_V_deltac, mu_lambda_inv_D = calc_exp_lambda(
             q_lambda, mu_sigma_inv, mu_beta0, V_beta0, Ds, Y, F, FF, Lambda_inv, size_deltac, Pc, C, N, K)
 
