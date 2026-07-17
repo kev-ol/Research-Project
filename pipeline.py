@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 import pickle
 from pathlib import Path
 import numpy as np
+import time
 from mfvi import run_mfvi
 from ssvi_i import run_ssvi_i
 from ssvi_c import run_ssvi_c
