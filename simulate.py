@@ -26,20 +26,22 @@ def _build_lambda_c(var_y, target_var_w, N, N_w, L, L_w, K):
 
 def _fit_ar1(x):
     x = np.asarray(x)
-    x_t, x_lag = x[1:], x[:-1]
+    mu = x.mean()
+    x_c = x - mu
+    x_t, x_lag = x_c[1:], x_c[:-1]
     phi = np.sum(x_lag * x_t) / np.sum(x_lag**2)
     resid = x_t - phi * x_lag
     sigma = np.std(resid)
-    return phi, sigma
+    return phi, sigma, mu
 
 
-def _simulate_ar1(phi, sigma, T_total, rng, x0=0.0):
+def _simulate_ar1(phi, sigma, T_total, rng, mu=0.0, x0=0.0):
     x = np.zeros(T_total)
     x[0] = x0
     eps = rng.normal(0, sigma, size=T_total)
     for t in range(1, T_total):
         x[t] = phi * x[t-1] + eps[t]
-    return x
+    return x + mu
 
 
 def _simulate_exog(real_series, T_total, rng):
@@ -47,8 +49,8 @@ def _simulate_exog(real_series, T_total, rng):
     n_cols = real_series.shape[1]
     sim = np.zeros((T_total, n_cols))
     for j in range(n_cols):
-        phi, sigma = _fit_ar1(real_series[:, j])
-        sim[:, j] = _simulate_ar1(phi, sigma, T_total, rng)
+        phi, sigma, mu = _fit_ar1(real_series[:, j])
+        sim[:, j] = _simulate_ar1(phi, sigma, T_total, rng, mu=mu)
     return sim
 
 
@@ -136,9 +138,12 @@ def simulate_data(Y_real, W_real, Z1_real, Z2_real, results_gibbs,
             Y[c, t] = betas[c] @ regressors + gamma_c[c] @ exog_z + innovations[t, c]
 
     Y = Y[:, burn:, :]
+    W_sim = W_sim[burn:]
+    Z1_sim = Z1_sim[burn:]
+    Z2_sim = Z2_sim[burn:]
 
     true_params = {
         "beta_0": beta0_sim, "lam": lambda_sim,
         "beta_c": betas, "gamma_c": gamma_c, "Sigma_c": Sigma_sim, 'Lambda': Lambda_sim
     }
-    return true_params, Y
+    return true_params, Y, W_sim, Z1_sim, Z2_sim

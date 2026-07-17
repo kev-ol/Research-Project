@@ -113,6 +113,7 @@ def calc_exp_lambda(lams, mu_sigma_inv, mu_beta0, V_beta0, Ds, Y, F, FF, Lambda_
     n = len(sorted_log_lams)
     m = int(np.sqrt(n))
     diffs = sorted_log_lams[2*m:] - sorted_log_lams[:-2*m]
+    diffs = np.maximum(diffs, 1e-12)
     mu_log_q_lambda = -np.mean(np.log(n * diffs / (2*m))) - mu_log_lambda  
 
     """"
@@ -192,6 +193,7 @@ def run_ssvi_i(ssvi_i_pack, Z_width, C, N, K, T, n_steps=1000, step_size_init = 
         mu_sigma_inv = [T * np.linalg.inv(S_bar_sigma[c]) for c in range(C)]  
         elbo = calc_ELBO(V_beta0, exp_logdet_V_deltac, S_bar_sigma, mu_log_lambda, mu_lambda_inv_D, mu_log_q_lambda, C, N, K, T)
         ELBO.append(elbo)
+        print(elbo)
     
     params = {
         'mu_beta0': mu_beta0,
