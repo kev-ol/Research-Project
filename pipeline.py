@@ -40,21 +40,27 @@ def run_pipeline(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2,
         Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2, Lambda
     )
 
+    t0 = time.perf_counter()
     results_mfvi, ELBO_mfvi = run_mfvi(mfvi_pack, Z_width, C, N, K, T)
-    print("MFVI COMPLETE")
+    mfvi_samples = sample_from_mfvi(results_mfvi, mfvi_pack, C, N, K, T)
+    print(f"MFVI COMPLETE ({time.perf_counter() - t0:.1f}s)")
+
+    t0 = time.perf_counter()
     results_ssvi_i, ELBO_ssvi_i, ess_i, log_lams_i = run_ssvi_i(ssvi_i_pack, Z_width, C, N, K, T, **config.ssvi_i_kwargs)
-    print("SSVI-I COMPLETE")
+    ssvi_i_samples = sample_from_ssvi_i(results_ssvi_i, ssvi_i_pack, C, N, K, T)
+    print(f"SSVI-I COMPLETE ({time.perf_counter() - t0:.1f}s)")
+
+    t0 = time.perf_counter()
     results_ssvi_c, ELBO_ssvi_c, ess_c, log_lams_c = run_ssvi_c(ssvi_i_pack, Z_width, C, N, K, T, **config.ssvi_c_kwargs)
-    print("SSVI-C COMPLETE")
+    ssvi_c_samples = sample_from_ssvi_c(results_ssvi_c, ssvi_i_pack, C, N, K, T)
+    print(f"SSVI-C COMPLETE ({time.perf_counter() - t0:.1f}s)")
+
+    t0 = time.perf_counter()
     results_gibbs, ess, rhat = run_gibbs(gibbs_pack, C, N, K, Z_width, T, **config.gibbs_kwargs)
-    print("GIBBS COMPLETE")
+    print(f"GIBBS COMPLETE ({time.perf_counter() - t0:.1f}s)")
 
     cov_true = compute_cov_true(results_gibbs, C)
     cov_mfvi = extract_cov_mfvi(results_mfvi, mfvi_pack, C)
-
-    mfvi_samples = sample_from_mfvi(results_mfvi, mfvi_pack, C, N, K, T)
-    ssvi_i_samples = sample_from_ssvi_i(results_ssvi_i, ssvi_i_pack, C, N, K, T)
-    ssvi_c_samples = sample_from_ssvi_c(results_ssvi_c, ssvi_i_pack, C, N, K, T)
 
     gibbs_faes_arrays = prepare_gibbs_faes_arrays(results_gibbs)
 
@@ -113,7 +119,7 @@ def run_pipeline(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2,
     tmp_path = cache_path.with_suffix(".tmp")
     with open(tmp_path, "wb") as f:
         pickle.dump(results, f)
-    tmp_path.rename(cache_path)
+    tmp_path.replace(cache_path)
     return results
 
 
