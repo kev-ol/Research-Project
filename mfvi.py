@@ -116,7 +116,6 @@ def run_mfvi(mfvi_pack, Z_width, C, N, K, T):
         mu_sigma_inv = [T * np.linalg.inv(S_bar_sigma[c]) for c in range(C)]
         elbo = calc_ELBO(V_delta, s_bar, v_bar, S_bar_sigma, T, C)
         ELBO.append(elbo)
-        print(elbo)
 
     params = {
         'mu_delta': mu_delta,
