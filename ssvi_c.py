@@ -175,12 +175,12 @@ def run_ssvi_c(ssvi_i_pack, Z_width, C, N, K, T, n_steps=1000, step_size_init = 
     mu_sigma_inv = [T * np.eye(N) for c in range(C)]
     step_size = step_size_init
 
-    epsilon = 1e-4
+    epsilon = 0.05
     ELBO = []
     ess_list = []
     log_lams_history = []
 
-    while len(ELBO) < 10 or ELBO[-1] - ELBO[-2] > epsilon:
+    while len(ELBO) < 10 or np.mean([abs(ELBO[-i] - ELBO[-i-1]) for i in range(1, 4)]) > epsilon:
         q_lambda, Ds = calc_q_lambda2(n_steps+n_burnin, step_size, lam_init, mu_sigma_inv, Y, F, FF, Lambda_inv, Lambda_inv_sum, size_deltac, Pc, C, N, K)
         q_lambda = q_lambda[n_burnin:]
         Ds = Ds[n_burnin:]

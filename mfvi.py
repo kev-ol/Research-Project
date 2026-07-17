@@ -114,7 +114,9 @@ def run_mfvi(mfvi_pack, Z_width, C, N, K, T):
         mu_lambda_inv = s_bar/v_bar
         S_bar_sigma = calc_S_bar_sigma(mu_delta, V_delta, Y, F, FF, idx_deltac, size_deltac, Z_width, Pc, C, N, K)
         mu_sigma_inv = [T * np.linalg.inv(S_bar_sigma[c]) for c in range(C)]
-        ELBO.append(calc_ELBO(V_delta, s_bar, v_bar, S_bar_sigma, T, C))
+        elbo = calc_ELBO(V_delta, s_bar, v_bar, S_bar_sigma, T, C)
+        ELBO.append(elbo)
+        print(elbo)
 
     params = {
         'mu_delta': mu_delta,
