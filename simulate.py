@@ -8,6 +8,15 @@ def _sample_var_y(var_y_real, C, rng):
     mean_log, std_log = log_var.mean(axis=0), log_var.std(axis=0)
     return np.exp(rng.normal(mean_log, std_log, size=(C, len(mean_log))))
 
+def ar_resid_var(x, L):
+    # x: (T,) univariate series; returns residual variance of AR(L) with constant
+    T = len(x)
+    Y_ = x[L:]
+    X_ = np.column_stack([x[L-l:T-l] for l in range(1, L+1)] + [np.ones(T-L)])
+    coef, _, _, _ = np.linalg.lstsq(X_, Y_, rcond=None)
+    resid = Y_ - X_ @ coef
+    return np.var(resid)
+
 
 def _build_lambda_c(var_y, target_var_w, N, N_w, L, L_w, K):
     """var_y: (C, N) -- variances per simulated country.
@@ -69,7 +78,7 @@ def simulate_data(Y_real, W_real, Z1_real, Z2_real, results_gibbs,
 
     Returns
     -------
-    true_params : dict with beta_c (C,N,K), gamma_c (C,N,Z_width), Sigma_c (C,N,N),
+    true_params : dict with beta_c (C,N*K), gamma_c (C,N*Z_width), Sigma_c (C,N,N),
         beta_0 (N*K,), lam (float)
     Y : (C, T, N) array
     """
@@ -83,9 +92,9 @@ def simulate_data(Y_real, W_real, Z1_real, Z2_real, results_gibbs,
     Z2_sim = _simulate_exog(Z2_real, T_total, rng)
 
     # Minnesota-prior variances, calibrated to real data scale
-    var_y_real = np.array([np.var(Y_real[c], axis=0) for c in range(C_real)])
+    var_y_real = np.array([[ar_resid_var(Y_real[c, :, n], L) for n in range(N)] for c in range(C_real)])
     var_y = _sample_var_y(var_y_real, C, rng)
-    target_var_w = np.var(W_sim, axis=0)
+    target_var_w = np.array([ar_resid_var(W_sim[:, j], L) for j in range(W_sim.shape[1])])
     Lambda_sim = _build_lambda_c(var_y, target_var_w, N, N_w, L, L_w, K)
 
     # true beta_0 / lambda, taken directly from the real posterior
@@ -107,20 +116,21 @@ def simulate_data(Y_real, W_real, Z1_real, Z2_real, results_gibbs,
         Sigma_sim[c] = D @ target_corr @ D
 
     # true betas: Minnesota-shrunk around beta_0, stabilized per country
-    betas = np.zeros((C, N, K))
+    betas = np.zeros((C, N*K))
     for c in range(C):
         beta_vec = beta0_sim + np.sqrt(lambda_sim * np.diag(Lambda_sim[c])) * rng.standard_normal(N*K)
-        betas[c] = beta_vec.reshape(N, K)
+        B_c = beta_vec.reshape(N, K)
 
         Comp = np.zeros((N*L, N*L))
-        Comp[:N, :] = betas[c, :, :N*L]
+        Comp[:N, :] = B_c[ :, :N*L]
         Comp[N:, :-N] = np.eye(N*(L-1))
         radius = np.max(np.abs(np.linalg.eigvals(Comp)))
         if radius >= 1:
-            betas[c, :, :N*L] *= 0.95 / radius
+            B_c[ :, :N*L] *= 0.95 / radius
+        betas[c] = B_c.flatten()
 
     # true gamma_c: single combined block over [Z1 lags, Z2 lags], matching data_prep.py's Z
-    gamma_c = rng.normal(0, gamma_var, size=(C, N, Z_width))
+    gamma_c = rng.normal(0, gamma_var, size=(C, N*Z_width))
 
     # innovations
     innovations = np.zeros((T_total, C, N))
@@ -135,7 +145,7 @@ def simulate_data(Y_real, W_real, Z1_real, Z2_real, results_gibbs,
         for c in range(C):
             lags_y = np.concatenate([Y[c, t-l, :] for l in range(1, L+1)])
             regressors = np.concatenate([lags_y, exog_w])
-            Y[c, t] = betas[c] @ regressors + gamma_c[c] @ exog_z + innovations[t, c]
+            Y[c, t] = betas[c].reshape(N, K) @ regressors + gamma_c[c].reshape(N, Z_width) @ exog_z + innovations[t, c]
 
     Y = Y[:, burn:, :]
     W_sim = W_sim[burn:]
