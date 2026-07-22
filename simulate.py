@@ -130,7 +130,9 @@ def simulate_data(Y_real, W_real, Z1_real, Z2_real, results_gibbs,
         betas[c] = B_c.flatten()
 
     # true gamma_c: single combined block over [Z1 lags, Z2 lags], matching data_prep.py's Z
-    gamma_c = rng.normal(0, gamma_var, size=(C, N*Z_width))
+    gamma_c_real = np.mean(results_gibbs["gamma_c"], axis=0)  # (C_real, N*Z_width)
+    mean_g, std_g = gamma_c_real.mean(axis=0), gamma_c_real.std(axis=0)
+    gamma_c = rng.normal(mean_g, std_g, size=(C, N*Z_width))
 
     # innovations
     innovations = np.zeros((T_total, C, N))
