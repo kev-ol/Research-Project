@@ -161,7 +161,7 @@ def calc_ELBO(V_beta0, exp_logdet_V_deltac, S_bar_sigma, mu_log_lambda, mu_lambd
 
 
 
-def run_ssvi_i(ssvi_i_pack, Z_width, C, N, K, T, n_steps=1000, s = 0.01, n_burnin = 100):
+def run_ssvi_i(ssvi_i_pack, Z_width, C, N, K, T, n_steps=1000, s = 0.01, n_burnin = 100, epsilon=0.05):
     Y, F, FF, idx_deltac, size_deltac, Pc, Lambda_inv, Lambda_inv_sum = ssvi_i_pack.values()
 
     # chosen initialisations
@@ -171,7 +171,6 @@ def run_ssvi_i(ssvi_i_pack, Z_width, C, N, K, T, n_steps=1000, s = 0.01, n_burni
     mu_lambda2_V = [mu_lambda_inv**2 * np.eye(size_deltac) for _ in range(C)]
     mu_sigma_inv = [T * np.eye(N) for c in range(C)]
 
-    epsilon = 0.05
     ELBO = []
     ess_list =  []
     log_lams_history = []

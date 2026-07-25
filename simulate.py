@@ -64,7 +64,7 @@ def _simulate_exog(real_series, T_total, rng):
 
 
 def simulate_data(Y_real, W_real, Z1_real, Z2_real, results_gibbs,
-                   C, T, N, N_w, L, L_w, L_z1, L_z2, K, Z_width, gamma_var = 0.1,
+                   C, T, N, N_w, L, L_w, L_z1, L_z2, K, Z_width,
                    burn=50, seed=None):
     """Simulate a (C, T, N) panel calibrated to the real data and a real Gibbs run.
 

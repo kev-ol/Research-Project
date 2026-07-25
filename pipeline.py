@@ -23,7 +23,7 @@ class PipelineConfig:
     variable_names: list
     sign_pattern: tuple = ((2, 2, 1.0), (3, 2, -1.0), (2, 3, 1.0), (3, 3, 1.0))
     # method hyperparams
-    ssvi_i_kwargs: dict = field(default_factory=lambda: dict(n_steps=1000, s=0.1, n_burnin=100))
+    ssvi_i_kwargs: dict = field(default_factory=lambda: dict(n_steps=1000, s=0.1, n_burnin=100, epsilon=0.05))
     ssvi_c_kwargs: dict = field(default_factory=lambda: dict(n_steps=1000, s=0.1, n_burnin=100))
     gibbs_kwargs: dict = field(default_factory=lambda: dict(n_chains=4, n_steps=10000, n_burnin=2000))
     n_draws: int = 10000
