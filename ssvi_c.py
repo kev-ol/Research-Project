@@ -201,7 +201,6 @@ def run_ssvi_c(ssvi_i_pack, Z_width, C, N, K, T, n_steps=1000, s = 0.01, n_burni
         mu_sigma_inv = [T * np.linalg.inv(S_bar_sigma[c]) for c in range(C)]  
         elbo = calc_ELBO2(exp_logdet_V_beta0, exp_logdet_V_deltac, S_bar_sigma, mu_log_lambda, mu_lambda_inv_D, mu_log_q_lambda, C, N, K, T)
         ELBO.append(elbo)
-        print(elbo)
     
     params = {
         'q_lambda': q_lambda,
