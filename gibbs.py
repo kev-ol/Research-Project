@@ -16,7 +16,9 @@ def beta_0_sample(lam, Sigma_c_inv, gamma_c, y, X, XX, Z, Lambda_inv, Lambda_inv
     # V = lambda * (sum Lambda_inv_c)^{-1}
     # mu = V * (1/lambda) * sum_c Lambda_inv_c beta_c
     P_inv = [np.linalg.inv((1/lam)*Lambda_inv[c] + np.kron(Sigma_c_inv[c], XX[c])) for c in range(C)]
-    V_beta_0 = np.linalg.inv((1/lam) * Lambda_inv_sum - (1/lam**2) * sum(Lambda_inv[c] @ P_inv[c] @ Lambda_inv[c] for c in range(C)))
+    precision_matrix = ((Lambda_inv_sum - (1/lam) * sum(Lambda_inv[c] @ P_inv[c] @ Lambda_inv[c] for c in range(C)))) / lam
+    precision_matrix = (precision_matrix + precision_matrix.T) / 2
+    V_beta_0 = np.linalg.inv(precision_matrix)
     r = [y[c] - np.kron(np.eye(N), Z) @ gamma_c[c] for c in range(C)]
     mu_beta_0 = V_beta_0 @ ((1/lam) * sum(Lambda_inv[c] @ P_inv[c] @ np.kron(Sigma_c_inv[c], X[c].T) @ r[c] for c in range(C)))
     sample = np.random.multivariate_normal(mu_beta_0, V_beta_0)
