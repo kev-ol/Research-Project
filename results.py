@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import invgamma, invwishart, gaussian_kde, wasserstein_distance
 from scipy.linalg import eigh
 from joblib import Parallel, delayed
-
+import pandas as pd
 from ssvi_i import calc_V_deltac, calc_mu_deltac
 from ssvi_c import calc_V_beta02, calc_mu_beta02, calc_V_deltac2, calc_mu_deltac2
 
@@ -142,7 +142,7 @@ def compute_cov_true(results_gibbs, C):
     return cov_true
 
 
-def extract_cov_mfvi(results_mfvi, mfvi_pack, C):
+def extract_cov_mfvi_pipeline(results_mfvi, mfvi_pack, C):
     """Per-country delta_c covariance block sliced out of MFVI's full V_delta."""
     idx_deltac = mfvi_pack["idx_deltac"]
     size_deltac = mfvi_pack["size_deltac"]
@@ -153,6 +153,18 @@ def extract_cov_mfvi(results_mfvi, mfvi_pack, C):
         start = idx_deltac[c]
         cov_mfvi.append(V_delta[start:start + size_deltac, start:start + size_deltac])
     return cov_mfvi
+
+def cov2corr(cov):
+    d = np.sqrt(np.diag(cov))
+    d[d == 0] = 1e-12
+    return cov / np.outer(d, d)
+
+def extract_cov_mfvi(V_delta, N, K, Z_width, C):
+    size_beta0 = N * K
+    size_deltac = N * K + N * Z_width
+    idx_deltac = [size_beta0 + c * size_deltac for c in range(C)]
+    return [V_delta[idx_deltac[c]:idx_deltac[c]+size_deltac,
+                     idx_deltac[c]:idx_deltac[c]+size_deltac] for c in range(C)]
 
 
 def UQF(cov_true, cov_est):
@@ -624,3 +636,254 @@ def plot_accuracy_boxplots_pooled(results_dict, method_name, method_key):
     fig.suptitle(f'Faes et al. Accuracy (pooled across {len(seeds)} seeds): {method_name} vs Gibbs', fontsize=14)
     plt.tight_layout()
     plt.show()
+
+def corr_mae_table(results, N, K, Z_width):
+    C = results["C"]
+    method_names = ["MFVI", "SSVI-I", "SSVI-C"]
+    V_delta = results["mfvi"]["results"]["V_delta"]
+    cov_mfvi = extract_cov_mfvi(V_delta, N, K, Z_width, C)
+    cov_ssvi_i = results["ssvi_i"]["results"]["cov_deltac"]
+    cov_ssvi_c = results["ssvi_c"]["results"]["cov_deltac"]
+    cov_true = results["cov_true"]
+    methods = {"MFVI": cov_mfvi, "SSVI-I": cov_ssvi_i, "SSVI-C": cov_ssvi_c}
+
+    country_names = results["config"].country_names
+    table = {name: [] for name in method_names}
+
+    for c in range(C):
+        corr_true = cov2corr(cov_true[c])
+        np.fill_diagonal(corr_true, np.nan)
+        for name, cov in methods.items():
+            corr_method = cov2corr(cov[c])
+            np.fill_diagonal(corr_method, np.nan)
+            diff = corr_method - corr_true
+            table[name].append(np.nanmean(np.abs(diff)))
+
+    return pd.DataFrame(table, index=country_names).round(4)
+
+def plot_corr_mae_boxplots(results_dict, N, K, Z_width):
+    seeds = list(results_dict.keys())
+    method_names = ["MFVI", "SSVI-I", "SSVI-C"]
+    pooled = {name: [] for name in method_names}
+
+    for seed in seeds:
+        results = results_dict[seed]
+        C = results["C"]
+        V_delta = results["mfvi"]["results"]["V_delta"]
+        cov_mfvi = extract_cov_mfvi(V_delta, N, K, Z_width, C)
+        cov_ssvi_i = results["ssvi_i"]["results"]["cov_deltac"]
+        cov_ssvi_c = results["ssvi_c"]["results"]["cov_deltac"]
+        cov_true = results["cov_true"]
+        methods = {"MFVI": cov_mfvi, "SSVI-I": cov_ssvi_i, "SSVI-C": cov_ssvi_c}
+
+        for c in range(C):
+            corr_true = cov2corr(cov_true[c])
+            np.fill_diagonal(corr_true, np.nan)
+            for name, cov in methods.items():
+                corr_method = cov2corr(cov[c])
+                np.fill_diagonal(corr_method, np.nan)
+                diff = corr_method - corr_true
+                pooled[name].append(np.nanmean(np.abs(diff)))
+
+    fig, ax = plt.subplots(figsize=(6, 5))
+    ax.boxplot([pooled[name] for name in method_names], tick_labels=method_names)
+    ax.set_ylabel("Mean abs correlation error vs Gibbs")
+    ax.grid(axis='y', alpha=0.3)
+    fig.suptitle("δ_c correlation structure error (pooled across countries & seeds)", fontsize=14)
+    plt.tight_layout()
+    plt.show()
+
+def plot_deltac_corr_diff_heatmaps(results, N, K, Z_width, seed):
+    C = results["C"]
+    country_names = results["config"].country_names
+
+    V_delta = results["mfvi"]["results"]["V_delta"]
+    cov_mfvi = extract_cov_mfvi(V_delta, N, K, Z_width, C)
+    cov_ssvi_i = results["ssvi_i"]["results"]["cov_deltac"]
+    cov_ssvi_c = results["ssvi_c"]["results"]["cov_deltac"]
+    cov_true = results["cov_true"]
+
+    methods = [("MFVI", cov_mfvi), ("SSVI-I", cov_ssvi_i), ("SSVI-C", cov_ssvi_c)]
+
+    for c in range(C):
+            corr_true = cov2corr(cov_true[c])
+            np.fill_diagonal(corr_true, np.nan)
+
+            diffs = []
+            for _, cov in methods:
+                corr_method = cov2corr(cov[c])
+                np.fill_diagonal(corr_method, np.nan)
+                diffs.append(corr_method - corr_true)
+
+            vmax = np.nanpercentile(np.abs(diffs), 98)
+
+            fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+
+            for ax, (label, _), diff in zip(axes, methods, diffs):
+                im = ax.imshow(diff, cmap="RdBu_r", vmin=-vmax, vmax=vmax)
+                ax.set_title(f"{label} − Gibbs")
+                fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+
+            fig.suptitle(f"δ_{{{country_names[c]}}} correlation error — seed {seed}", fontsize=14)
+            plt.tight_layout()
+            plt.show()
+
+def plot_uqf_boxplot(results_dict, methods=("mfvi", "ssvi_i", "ssvi_c")):
+    seeds = list(results_dict.keys())
+    pooled = {method: np.concatenate([results_dict[seed][method]["uqf"] for seed in seeds]) for method in methods}
+
+    fig, ax = plt.subplots(figsize=(6, 5))
+    ax.boxplot([pooled[m] for m in methods], tick_labels=methods)
+    ax.set_ylabel("UQF")
+    ax.grid(axis='y', alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+    
+def plot_conditional_mean_grid(methods, n_bins=10, title=None):
+    fig, axes = plt.subplots(2, 2, figsize=(10, 9), sharey=True)
+    handles, labels = None, None
+
+    for ax, (name, lam, coef_by_country, country_names, beta0_samples) in zip(axes.flat, methods):
+        for c, cname in enumerate(country_names):
+            bins = pd.qcut(lam, q=n_bins)
+            df = pd.DataFrame({"lam": lam, "coef": coef_by_country[c]})
+            grouped = df.groupby(bins, observed=True)
+            ax.plot(grouped["lam"].mean(), grouped["coef"].mean(), marker="o", label=cname)
+
+        if beta0_samples is not None:
+            bins = pd.qcut(lam, q=n_bins)
+            df = pd.DataFrame({"lam": lam, "coef": beta0_samples})
+            grouped = df.groupby(bins, observed=True)
+            ax.plot(grouped["lam"].mean(), grouped["coef"].mean(), marker="s",
+                     color="black", linestyle="--", label=r"$\beta_0$")
+
+        ax.set_xlabel(r"$\lambda$")
+        ax.set_ylabel("conditional mean")
+        ax.set_title(name)
+        if handles is None:
+            handles, labels = ax.get_legend_handles_labels()
+
+    if title:
+        fig.suptitle(title, y=0.98)
+
+    fig.legend(handles, labels, loc="lower center", ncol=len(labels), bbox_to_anchor=(0.5, 0.0))
+    fig.tight_layout(rect=[0, 0.06, 1, 0.94])
+    return fig, axes
+
+def plot_conditional_mean_by_seed(results_by_seed, k, n_bins=10):
+    figs = {}
+    for seed, results in results_by_seed.items():
+        arr = {
+            method: np.array(results[method]["samples" if method != "gibbs" else "results"]["beta_c"])
+            for method in ["mfvi", "ssvi_i", "ssvi_c", "gibbs"]
+        }
+        beta0 = {
+            method: np.array(results[method]["samples" if method != "gibbs" else "results"]["beta_0"])
+            for method in ["mfvi", "ssvi_i", "ssvi_c", "gibbs"]
+        }
+        lam = {
+            method: results[method]["samples" if method != "gibbs" else "results"]["lam"]
+            for method in ["mfvi", "ssvi_i", "ssvi_c", "gibbs"]
+        }
+        country_names = results["config"].country_names
+
+        methods = [
+            (name.upper().replace("_", "-"), lam[name],
+             [arr[name][:, c, k] for c in range(arr[name].shape[1])],
+             country_names, beta0[name][:, k])
+            for name in ["mfvi", "ssvi_i", "ssvi_c", "gibbs"]
+        ]
+
+        fig, axes = plot_conditional_mean_grid(
+            methods, n_bins=n_bins,
+            title=f"Conditional mean of beta_c[{k}] given λ, by country (seed {seed})"
+        )
+        figs[seed] = fig
+    return figs
+
+def coverage_table(results_by_seed, true_by_seed, param_key, methods,
+                    levels=(0.5, 0.8, 0.95), axis_type="country"):
+    # axis_type: "country" (e.g. beta_c, gamma_c), "vector" (e.g. beta_0)
+    hits = {method: {level: [] for level in levels} for method in methods}
+
+    for method in methods:
+        result_key = "results" if method == "gibbs" else "samples"
+        for seed, results in results_by_seed.items():
+            samples = np.array(results[method][result_key][param_key])
+            true_vals = np.array(true_by_seed[seed][param_key])
+
+            if axis_type == "country":
+                for c in range(samples.shape[1]):
+                    s, t = samples[:, c, :], true_vals[c]
+                    for level in levels:
+                        alpha = 1 - level
+                        lo, hi = np.quantile(s, [alpha / 2, 1 - alpha / 2], axis=0)
+                        hits[method][level].append((lo <= t) & (t <= hi))
+            else:  # vector
+                s, t = samples, true_vals
+                for level in levels:
+                    alpha = 1 - level
+                    lo, hi = np.quantile(s, [alpha / 2, 1 - alpha / 2], axis=0)
+                    hits[method][level].append((lo <= t) & (t <= hi))
+
+    table = pd.DataFrame({
+        method: {level: np.concatenate(hits[method][level]).mean() for level in levels}
+        for method in methods
+    }).T
+    table.columns = [f"{int(l*100)}%" for l in table.columns]
+    return table
+
+def plot_lambda_intervals(results_by_seed, true_by_seed, methods, levels=(0.5, 0.8, 0.95), ax=None):
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8, 6))
+    seeds = list(results_by_seed.keys())
+    n_methods = len(methods)
+    linewidths = {levels[0]: 8, levels[1]: 4, levels[2]: 1.5}
+
+    for m_idx, method in enumerate(methods):
+        result_key = "results" if method == "gibbs" else "samples"
+        for s_idx, seed in enumerate(seeds):
+            samples = np.array(results_by_seed[seed][method][result_key]["lam"])
+            true_val = true_by_seed[seed]["lam"]
+            y = s_idx * (n_methods + 1) + m_idx
+
+            for level in levels:
+                alpha = 1 - level
+                lo, hi = np.quantile(samples, [alpha / 2, 1 - alpha / 2])
+                lo = max(lo, 1e-8)  # guard against zero/negative on log scale
+                ax.plot([lo, hi], [y, y], color=f"C{m_idx}",
+                        linewidth=linewidths[level], solid_capstyle="round",
+                        label=method if (s_idx == 0 and level == levels[0]) else None)
+
+            ax.scatter([true_val], [y], color="black", marker="x", s=60, zorder=5)
+
+    ax.set_xscale("log")
+    ax.set_yticks([s_idx * (n_methods + 1) + n_methods / 2 for s_idx in range(len(seeds))])
+    ax.set_yticklabels([f"seed {s}" for s in seeds])
+    for s_idx in range(len(seeds)):
+        ax.axhline(s_idx * (n_methods + 1) - 0.5, color="grey", linewidth=0.5, alpha=0.5)
+    ax.set_xlabel(r"$\lambda$ (log scale)")
+    ax.legend()
+    return ax
+
+def plot_diagnostics(ssvi_i_trace, ssvi_c_trace, rhat, title_suffix=""):
+    fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+
+    axes[0].plot(ssvi_i_trace)
+    axes[0].set_title(f"SSVI-I: log(lambda) ULA trace{title_suffix}")
+
+    axes[1].plot(ssvi_c_trace)
+    axes[1].set_title(f"SSVI-C: log(lambda) ULA trace{title_suffix}")
+
+    axes[2].hist(rhat, bins=50)
+    axes[2].axvline(1.01, color='red', linestyle='--', label='common threshold (1.01)')
+    axes[2].set_xlabel('R-hat')
+    axes[2].set_ylabel('count')
+    axes[2].set_title(f"R-hat distribution{title_suffix}")
+    axes[2].legend()
+
+    fig.tight_layout()
+    plt.show()
+
+    print(f"max R-hat: {rhat.max():.4f}, min R-hat: {rhat.min():.4f}, "
+          f"# > 1.01: {(rhat > 1.01).sum()} / {len(rhat)}")

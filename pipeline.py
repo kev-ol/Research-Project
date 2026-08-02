@@ -1,20 +1,16 @@
 from dataclasses import dataclass, field
 import pickle
 from pathlib import Path
+from IPython.display import display
 import numpy as np
+import matplotlib.pyplot as plt
 import time
 from mfvi import run_mfvi
 from ssvi_i import run_ssvi_i
 from ssvi_c import run_ssvi_c
 from gibbs import run_gibbs
 from data_prep import prep_data
-from results import (
-    sample_from_mfvi, sample_from_ssvi_i, sample_from_ssvi_c,
-    compute_cov_true, extract_cov_mfvi, compute_uqf,
-    prepare_gibbs_faes_arrays, compute_faes_scores, plot_accuracy_boxplots,
-    compute_irfs, plot_irfs_comparison,
-    compute_wasserstein_curve, plot_wasserstein_grid_comparison,
-)
+from results import *
 
 @dataclass
 class PipelineConfig:
@@ -61,7 +57,7 @@ def run_pipeline(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2,
     print(f"GIBBS COMPLETE ({time.perf_counter() - t0:.1f}s)")
 
     cov_true = compute_cov_true(results_gibbs, C)
-    cov_mfvi = extract_cov_mfvi(results_mfvi, mfvi_pack, C)
+    cov_mfvi = extract_cov_mfvi_pipeline(results_mfvi, mfvi_pack, C)
 
     gibbs_faes_arrays = prepare_gibbs_faes_arrays(results_gibbs)
 
@@ -124,8 +120,9 @@ def run_pipeline(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2,
     return results
 
 
-def plot_pipeline_results(results):
-    """Produce every comparison plot (boxplots, IRFs, Wasserstein grid) for one run_pipeline result."""
+def plot_pipeline_results(results, N, K, Z_width):
+    """Produce every comparison plot (boxplots, IRFs, Wasserstein grid, UQF, MAE_corr) 
+    for one run_pipeline result, ending with convergence diagnostics."""
     config = results["config"]
     C = results["C"]
     methods = [("MFVI", "mfvi"), ("SSVI-I", "ssvi_i"), ("SSVI-C", "ssvi_c")]
@@ -144,3 +141,87 @@ def plot_pipeline_results(results):
         {wasserstein_labels[key]: results[key]["wasserstein"] for _, key in methods},
         config.country_names, config.variable_names,
     )
+
+    lam_mfvi = results["mfvi"]["samples"]["lam"]
+    lam_ssvi_i = results["ssvi_i"]["samples"]["lam"]
+    lam_ssvi_c = results["ssvi_c"]["samples"]["lam"]
+    lam_gibbs = results["gibbs"]["results"]["lam"]
+
+    plt.figure(figsize=(8, 5))
+    plt.hist(lam_ssvi_i, bins=50, density=True, alpha=0.5, label='SSVI_I')
+    plt.hist(lam_ssvi_c, bins=50, density=True, alpha=0.5, label='SSVI_C')
+    plt.hist(lam_mfvi, bins=50, density=True, alpha=0.5, label='mfvi')
+    plt.hist(lam_gibbs, bins=50, density=True, alpha=0.5, label='Gibbs')
+    plt.xlim(0, 0.0002)
+    plt.xlabel('lambda')
+    plt.ylabel('density')
+    plt.legend()
+    plt.title('SSVI-I vs MFVI vs Gibbs: posterior of lambda\n(mfvi peak truncated for visibility)')
+    plt.show()
+
+    # --- UQF ---
+    uqf_table = pd.DataFrame({
+        method: results[method]["uqf"]
+        for method in ["mfvi", "ssvi_i", "ssvi_c"]
+    }, index=config.country_names if hasattr(results["mfvi"]["uqf"], "__len__") else None)
+    print("UQF (Cov(delta_c) accuracy):")
+    display(uqf_table.round(4))
+
+    # --- Correlation-structure MAE ---
+    print("Correlation structure MAE:")
+    corr_mae_table(results, N, K, Z_width)
+
+    # --- Diagnostics (last) ---
+    plot_diagnostics(
+        results["ssvi_i"]["diagnostics"]["log_lam_history"][-1],
+        results["ssvi_c"]["diagnostics"]["log_lam_history"][-1],
+        results["gibbs"]["diagnostics"]["rhat"],
+    )
+
+def plot_pipeline_results_seed(results, true_params, N, K, Z_width, label=""):
+    config = results[list(results.keys())[0]]["config"]
+    C = results[list(results.keys())[0]]["C"]
+    method_pairs = [("MFVI", "mfvi"), ("SSVI-I", "ssvi_i"), ("SSVI-C", "ssvi_c")]
+    methods = ["mfvi", "ssvi_i", "ssvi_c", "gibbs"]
+
+    # --- pooled accuracy ---
+    for method_label, key in method_pairs:
+        plot_accuracy_boxplots_pooled(results, method_label, key)
+
+    # --- Wasserstein, per seed ---
+    wasserstein_labels = {"mfvi": "MFVI", "ssvi_i": "SSVI-I", "ssvi_c": "SSVI-C"}
+    for seed in results:
+        plot_wasserstein_grid_comparison(
+            {wasserstein_labels[key]: results[seed][key]["wasserstein"] for _, key in method_pairs},
+            config.country_names, config.variable_names,
+        )
+
+    # --- UQF and MAE_corr, pooled ---
+    plot_corr_mae_boxplots(results, N, K, Z_width)
+    plot_uqf_boxplot(results)
+
+    # --- comparison to real truth ---
+    coverage_betac = coverage_table(results, true_params, "beta_c", methods)
+    print(f"beta_c coverage ({label}):")
+    display(coverage_betac)
+
+    coverage_gammac = coverage_table(results, true_params, "gamma_c", methods)
+    print(f"gamma_c coverage ({label}):")
+    display(coverage_gammac)
+
+    coverage_beta0 = coverage_table(results, true_params, "beta_0", methods, axis_type="vector")
+    print(f"beta_0 coverage ({label}):")
+    display(coverage_beta0)
+
+    ax = plot_lambda_intervals(results, true_params, methods)
+    ax.set_title(rf"Credible intervals for $\lambda$ vs. true value — {label}")
+    plt.show()
+
+# --- diagnostics, per seed, last ---
+    for seed in results:
+        plot_diagnostics(
+            results[seed]["ssvi_i"]["diagnostics"]["log_lam_history"][-1],
+            results[seed]["ssvi_c"]["diagnostics"]["log_lam_history"][-1],
+            results[seed]["gibbs"]["diagnostics"]["rhat"],
+            title_suffix=f" (seed {seed})",
+        )
