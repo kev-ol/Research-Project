@@ -562,3 +562,65 @@ def plot_wasserstein_grid_comparison(distances_dict, country_names, variable_nam
     fig.suptitle("Wasserstein distance: Gibbs vs VI methods", y=1.02)
     plt.tight_layout()
     plt.show()
+
+
+def plot_accuracy_boxplots_pooled(results_dict, method_name, method_key):
+    """Same layout as plot_accuracy_boxplots, but pooled across all seeds in results_dict."""
+    seeds = list(results_dict.keys())
+    C = results_dict[seeds[0]]["C"]
+
+    faes_all = [results_dict[seed][method_key]["faes"] for seed in seeds]
+
+    beta_c_data = [np.concatenate([faes['beta_c'][c] for faes in faes_all]) for c in range(C)]
+    gamma_c_data = [np.concatenate([faes['gamma_c'][c] for faes in faes_all]) for c in range(C)]
+    sigma_c_data = [np.concatenate([faes['Sigma_c'][c] for faes in faes_all]) for c in range(C)]
+    beta_0_data = [np.concatenate([faes['beta_0'] for faes in faes_all])]
+    lam_data = [faes['lam'] for faes in faes_all]  # one value per seed
+
+    country_labels = [f'C{c+1}' for c in range(C)]
+    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+
+    axes[0, 0].boxplot(beta_c_data, labels=country_labels)
+    axes[0, 0].set_title(r'$\beta_c$')
+    axes[0, 0].set_ylabel('Accuracy (%)')
+
+    axes[0, 1].boxplot(gamma_c_data, labels=country_labels)
+    axes[0, 1].set_title(r'$\gamma_c$')
+    axes[0, 1].set_ylabel('Accuracy (%)')
+
+    axes[0, 2].boxplot(sigma_c_data, labels=country_labels)
+    axes[0, 2].set_title(r'$\Sigma_c$ diagonals')
+    axes[0, 2].set_ylabel('Accuracy (%)')
+
+    axes[1, 0].boxplot(beta_0_data, labels=[r'$\beta_0$'])
+    axes[1, 0].set_ylabel('Accuracy (%)')
+
+    # lambda: now has n_seeds values, use scatter (not boxplot, per earlier n=4 discussion)
+    axes[1, 1].scatter([1] * len(lam_data), lam_data, s=80, zorder=5, alpha=0.6)
+    axes[1, 1].set_xlim(0.5, 1.5)
+    axes[1, 1].set_xticks([1])
+    axes[1, 1].set_xticklabels([r'$\lambda$'])
+    axes[1, 1].set_ylabel('Accuracy (%)')
+
+    axes[1, 2].set_visible(False)
+
+    boxplot_axes_data = {
+        (0, 0): beta_c_data, (0, 1): gamma_c_data,
+        (0, 2): sigma_c_data, (1, 0): beta_0_data,
+    }
+    for (row, col), data in boxplot_axes_data.items():
+        ax = axes[row, col]
+        all_vals = np.concatenate([np.asarray(d) for d in data])
+        lo, hi = np.min(all_vals), np.max(all_vals)
+        pad = max((hi - lo) * 0.1, 1.0)
+        ax.set_ylim(max(0, lo - pad), min(100, hi + pad))
+
+    axes[1, 1].set_ylim(0, 100)
+
+    for ax in axes.flat:
+        if ax.get_visible():
+            ax.grid(axis='y', alpha=0.3)
+
+    fig.suptitle(f'Faes et al. Accuracy (pooled across {len(seeds)} seeds): {method_name} vs Gibbs', fontsize=14)
+    plt.tight_layout()
+    plt.show()
