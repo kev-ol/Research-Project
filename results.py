@@ -866,8 +866,8 @@ def plot_lambda_intervals(results_by_seed, true_by_seed, methods, levels=(0.5, 0
     ax.legend()
     return ax
 
-def plot_diagnostics(ssvi_i_trace, ssvi_c_trace, rhat, title_suffix=""):
-    fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+def plot_diagnostics(ssvi_i_trace, ssvi_c_trace, ssvi_i_ess, ssvi_c_ess, rhat, title_suffix=""):
+    fig, axes = plt.subplots(1, 4, figsize=(19, 4))
 
     axes[0].plot(ssvi_i_trace)
     axes[0].set_title(f"SSVI-I: log(lambda) ULA trace{title_suffix}")
@@ -875,12 +875,19 @@ def plot_diagnostics(ssvi_i_trace, ssvi_c_trace, rhat, title_suffix=""):
     axes[1].plot(ssvi_c_trace)
     axes[1].set_title(f"SSVI-C: log(lambda) ULA trace{title_suffix}")
 
-    axes[2].hist(rhat, bins=50)
-    axes[2].axvline(1.01, color='red', linestyle='--', label='common threshold (1.01)')
-    axes[2].set_xlabel('R-hat')
-    axes[2].set_ylabel('count')
-    axes[2].set_title(f"R-hat distribution{title_suffix}")
+    axes[2].plot(ssvi_i_ess, marker="o", label="SSVI-I")
+    axes[2].plot(ssvi_c_ess, marker="o", label="SSVI-C")
+    axes[2].set_xlabel("CAVI iteration")
+    axes[2].set_ylabel("ESS")
+    axes[2].set_title(f"ESS across CAVI iterations{title_suffix}")
     axes[2].legend()
+
+    axes[3].hist(rhat, bins=50)
+    axes[3].axvline(1.01, color='red', linestyle='--', label='common threshold (1.01)')
+    axes[3].set_xlabel('R-hat')
+    axes[3].set_ylabel('count')
+    axes[3].set_title(f"R-hat distribution{title_suffix}")
+    axes[3].legend()
 
     fig.tight_layout()
     plt.show()

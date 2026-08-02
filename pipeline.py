@@ -169,12 +169,14 @@ def plot_pipeline_results(results, N, K, Z_width):
 
     # --- Correlation-structure MAE ---
     print("Correlation structure MAE:")
-    corr_mae_table(results, N, K, Z_width)
+    display(corr_mae_table(results, N, K, Z_width))
 
     # --- Diagnostics (last) ---
     plot_diagnostics(
         results["ssvi_i"]["diagnostics"]["log_lam_history"][-1],
         results["ssvi_c"]["diagnostics"]["log_lam_history"][-1],
+        results["ssvi_i"]["diagnostics"]["ess"],
+        results["ssvi_c"]["diagnostics"]["ess"],
         results["gibbs"]["diagnostics"]["rhat"],
     )
 
@@ -217,11 +219,13 @@ def plot_pipeline_results_seed(results, true_params, N, K, Z_width, label=""):
     ax.set_title(rf"Credible intervals for $\lambda$ vs. true value — {label}")
     plt.show()
 
-# --- diagnostics, per seed, last ---
+    # --- diagnostics, per seed, last ---
     for seed in results:
         plot_diagnostics(
             results[seed]["ssvi_i"]["diagnostics"]["log_lam_history"][-1],
             results[seed]["ssvi_c"]["diagnostics"]["log_lam_history"][-1],
+            results[seed]["ssvi_i"]["diagnostics"]["ess"],
+            results[seed]["ssvi_c"]["diagnostics"]["ess"],
             results[seed]["gibbs"]["diagnostics"]["rhat"],
             title_suffix=f" (seed {seed})",
         )
