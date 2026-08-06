@@ -3,62 +3,83 @@
 import numpy as np
 
 """MFVI Update Functions"""
-# Lee-Wand streamlined version (still to be fixd)
-def calc_V_delta(mu_lambda_inv, mu_sigma_inv, XX, XZ, ZZ, size_deltac, Lambda_inv, Lambda_inv_sum, C, N, K):
-    NK = N * K
-    N_z = size_deltac - NK
-    size_c = NK + N_z
-    total_size = NK + C * size_c
-    
-    total = mu_lambda_inv * Lambda_inv_sum
-    H = []
+def calc_V_delta(mu_lambda_inv, mu_sigma_inv, FF, Big_S, idx_deltac, size_deltac, Pc, C):
+    """Compute the full joint covariance matrix V_delta over [beta_0, delta_1,
+    ..., delta_C] by direct inversion of the joint precision matrix.
 
-    for c in range(C):
-        top_left = mu_lambda_inv * Lambda_inv[c] + np.kron(mu_sigma_inv[c], XX[c])
-        top_right = np.kron(mu_sigma_inv[c], XZ[c])
-        bottom_left = top_right.T
-        bottom_right = np.kron(mu_sigma_inv[c], ZZ)
+    Parameters
+    ----------
+    mu_lambda_inv : float
+        Current expectation of 1/lambda under q(lambda).
+    mu_sigma_inv : list of length C of numpy.ndarray of shape (N, N)
+        Per-country expected precision of Sigma_c.
+    FF : sequence of length C of numpy.ndarray of shape (K+Z_width, K+Z_width)
+        Per-country F_c.T @ F_c matrices.
+    Big_S : numpy.ndarray of shape (size_delta, size_delta)
+        Combined prior precision structure over the full delta vector
+        [beta_0, delta_1, ..., delta_C], as built in `data_prep.prep_data`.
+    idx_deltac : list of length C of int
+        Starting index of each country's delta_c block within delta.
+    size_deltac : int
+        Dimension of the stacked delta_c = [beta_c, gamma_c] vector.
+    Pc : numpy.ndarray of shape (size_deltac, size_deltac)
+        Reordering matrix mapping stacked [beta_c, gamma_c] to the
+        equation-interleaved delta_c ordering.
+    C : int
+        Number of countries.
+    N : int
+        Number of endogenous variables.
+    K : int
+        Number of regressors per equation.
 
-        H_c_inv = np.block([[top_left, top_right],[bottom_left, bottom_right]])
-        H_c = np.linalg.inv(H_c_inv)
-        H.append(H_c)
-
-        total -= mu_lambda_inv**2 * (Lambda_inv[c] @ H_c[:N*K, :N*K] @ Lambda_inv[c])
-
-    V_beta0 = np.linalg.inv(total)
-
-    V_delta = np.zeros((total_size, total_size))
-    V_delta[:NK, :NK] = V_beta0
-
-    for c in range(C):
-        row = NK + c * size_c
-        
-        V_dc = H[c] + H[c][:, :NK] @ (mu_lambda_inv**2 * Lambda_inv[c] @ V_beta0 @ Lambda_inv[c]) @ H[c][:NK, :]
-        V_cross = -V_beta0 @ (mu_lambda_inv * Lambda_inv[c] @ H[c][:NK, :])
-
-        V_delta[row:row+size_c, row:row+size_c] = V_dc
-        V_delta[:NK, row:row+size_c] = V_cross
-        V_delta[row:row+size_c, :NK] = V_cross.T
-
-    return V_delta
-
-# basic version currently used
-def calc_V_delta_naive(mu_lambda_inv, mu_sigma_inv, FF, Big_S, idx_deltac, size_deltac, Pc, C, N, K):
-    
+    Returns
+    -------
+    numpy.ndarray of shape (size_delta, size_delta)
+        Full joint covariance matrix V_delta over [beta_0, delta_1, ..., delta_C].
+    """
     precision = mu_lambda_inv * Big_S.copy()
-    
+
     for c in range(C):
         start = idx_deltac[c]
         likelihood_precision = np.kron(mu_sigma_inv[c], FF[c])
-        
+
         # S_deltac places this into the delta_c block, Pc reorders
         PtLP = Pc.T @ likelihood_precision @ Pc  # (size_deltac, size_deltac)
         precision[start:start+size_deltac, start:start+size_deltac] += PtLP
-    
+
     return np.linalg.inv(precision)
 
 
 def calc_mu_delta(V_delta, mu_sigma_inv, Y, F, idx_deltac, size_deltac, Pc, C):
+    """Compute the full joint mean vector mu_delta over [beta_0, delta_1, ...,
+    delta_C].
+
+    Parameters
+    ----------
+    V_delta : numpy.ndarray of shape (size_delta, size_delta)
+        Full joint covariance matrix, as returned by `calc_V_delta`
+        (or `calc_V_delta`).
+    mu_sigma_inv : list of length C of numpy.ndarray of shape (N, N)
+        Per-country expected precision of Sigma_c.
+    Y : numpy.ndarray of shape (C, T, N)
+        Endogenous panel data.
+    F : sequence of length C of numpy.ndarray of shape (T, K+Z_width)
+        Per-country design matrices (all regressors).
+    idx_deltac : list of length C of int
+        Starting index of each country's delta_c block within delta.
+    size_deltac : int
+        Dimension of the stacked delta_c = [beta_c, gamma_c] vector.
+    Pc : numpy.ndarray of shape (size_deltac, size_deltac)
+        Reordering matrix mapping stacked [beta_c, gamma_c] to the
+        equation-interleaved delta_c ordering.
+    C : int
+        Number of countries.
+
+    Returns
+    -------
+    numpy.ndarray of shape (size_delta,)
+        Full joint mean vector mu_delta over [beta_0, delta_1, ..., delta_C].
+    """
     sum = np.zeros(V_delta.shape[0])
     for c in range(C):
         start = idx_deltac[c]
@@ -67,6 +88,42 @@ def calc_mu_delta(V_delta, mu_sigma_inv, Y, F, idx_deltac, size_deltac, Pc, C):
     return V_delta @ sum
 
 def calc_S_bar_sigma(mu_delta, V_delta, Y, F, FF, idx_deltac, size_deltac, Z_width, Pc, C, N, K):
+    """Compute the per-country expected residual-sum-of-squares-plus-uncertainty
+    matrix used to update the expected precision of Sigma_c.
+
+    Parameters
+    ----------
+    mu_delta : numpy.ndarray of shape (size_delta,)
+        Full joint mean vector, as returned by `calc_mu_delta`.
+    V_delta : numpy.ndarray of shape (size_delta, size_delta)
+        Full joint covariance matrix, as returned by `calc_V_delta`.
+    Y : numpy.ndarray of shape (C, T, N)
+        Endogenous panel data.
+    F : sequence of length C of numpy.ndarray of shape (T, K+Z_width)
+        Per-country design matrices (all regressors).
+    FF : sequence of length C of numpy.ndarray of shape (K+Z_width, K+Z_width)
+        Per-country F_c.T @ F_c matrices.
+    idx_deltac : list of length C of int
+        Starting index of each country's delta_c block within delta.
+    size_deltac : int
+        Dimension of the stacked delta_c = [beta_c, gamma_c] vector.
+    Z_width : int
+        Number of non-exchangeable regressors per equation.
+    Pc : numpy.ndarray of shape (size_deltac, size_deltac)
+        Reordering matrix mapping stacked [beta_c, gamma_c] to the
+        equation-interleaved delta_c ordering.
+    C : int
+        Number of countries.
+    N : int
+        Number of endogenous variables.
+    K : int
+        Number of regressors per equation.
+
+    Returns
+    -------
+    list of length C of numpy.ndarray of shape (N, N)
+        Expected scale matrix S_bar_sigma_c for each country's Sigma_c update.
+    """
     width = K + Z_width
     S_bar_sigma = [np.eye(N)] * C
     for c in range(C):
@@ -88,6 +145,30 @@ def calc_S_bar_sigma(mu_delta, V_delta, Y, F, FF, idx_deltac, size_deltac, Z_wid
 
 # Use the corrected derivation of ELBO
 def calc_ELBO(V_delta, s_bar, v_bar, S_bar_sigma, T, C):
+    """Compute the evidence lower bound (ELBO) for the current MFVI
+    variational approximation.
+
+    Parameters
+    ----------
+    V_delta : numpy.ndarray of shape (size_delta, size_delta)
+        Full joint covariance matrix, as returned by `calc_V_delta`.
+    s_bar : float
+        Shape parameter of lambda's Inverse-Gamma conditional posterior
+        (C*N*K - 1).
+    v_bar : float
+        Scale parameter of lambda's Inverse-Gamma conditional posterior.
+    S_bar_sigma : list of length C of numpy.ndarray of shape (N, N)
+        Expected scale matrix for each country's Sigma_c.
+    T : int
+        Number of time periods.
+    C : int
+        Number of countries.
+
+    Returns
+    -------
+    float
+        The ELBO value.
+    """
     _, logdet_V = np.linalg.slogdet(V_delta)
     elbo = logdet_V / 2 - s_bar * np.log(v_bar) / 2
     for c in range(C):
@@ -98,7 +179,45 @@ def calc_ELBO(V_delta, s_bar, v_bar, S_bar_sigma, T, C):
 """MFVI Loop"""
 
 def run_mfvi(mfvi_pack, Z_width, C, N, K, T):
-    Y, F, FF, XX, XZ, ZZ, idx_deltac, size_gammmac, size_deltac, Pc, Big_S, Lambda_inv, Lambda_inv_sum = mfvi_pack.values()
+    """Run the mean-field variational inference (MFVI) coordinate-ascent loop
+    until the ELBO converges.
+
+    Parameters
+    ----------
+    mfvi_pack : dict
+        Data pack produced by `data_prep.prep_data`, with (in order) keys
+        'Y' (numpy.ndarray, shape (C, T, N)), 'F' (sequence of length C of
+        numpy.ndarray, shape (T, K+Z_width)), 'FF' (sequence of length C of
+        numpy.ndarray, shape (K+Z_width, K+Z_width)), 'XX' (numpy.ndarray,
+        shape (C, K, K)), 'XZ' (numpy.ndarray, shape (C, K, Z_width)), 'ZZ'
+        (numpy.ndarray, shape (Z_width, Z_width)), 'idx_deltac' (list of
+        int), 'size_gammmac' (int), 'size_deltac' (int), 'Pc' (numpy.ndarray,
+        shape (size_deltac, size_deltac)), 'Big_S' (numpy.ndarray, shape
+        (size_delta, size_delta)), 'Lambda_inv' (list of length C of
+        numpy.ndarray, shape (N*K, N*K)), and 'Lambda_inv_sum'
+        (numpy.ndarray, shape (N*K, N*K)).
+    Z_width : int
+        Number of non-exchangeable regressors per equation.
+    C : int
+        Number of countries.
+    N : int
+        Number of endogenous variables.
+    K : int
+        Number of regressors per equation.
+    T : int
+        Number of time periods.
+
+    Returns
+    -------
+    params : dict
+        Dictionary with keys 'mu_delta' (numpy.ndarray, shape (size_delta,)),
+        'V_delta' (numpy.ndarray, shape (size_delta, size_delta)), 'v_bar'
+        (float), 's_bar' (float), and 'S_bar_sigma' (list of length C of
+        numpy.ndarray, shape (N, N)).
+    ELBO : list of float
+        ELBO value at each coordinate-ascent iteration.
+    """
+    Y, F, FF, idx_deltac, size_deltac, Pc, Big_S = mfvi_pack.values()
 
     # chosen initialisations
     mu_lambda_inv = 1e4
@@ -108,7 +227,7 @@ def run_mfvi(mfvi_pack, Z_width, C, N, K, T):
     ELBO = []
     s_bar = C*N*K - 1
     while len(ELBO) < 10 or ELBO[-1] - ELBO[-2] > epsilon:
-        V_delta = calc_V_delta_naive(mu_lambda_inv, mu_sigma_inv, FF, Big_S, idx_deltac, size_deltac, Pc, C, N, K)
+        V_delta = calc_V_delta(mu_lambda_inv, mu_sigma_inv, FF, Big_S, idx_deltac, size_deltac, Pc, C)
         mu_delta = calc_mu_delta(V_delta, mu_sigma_inv, Y, F, idx_deltac, size_deltac, Pc, C)
         v_bar = mu_delta.T @ Big_S @ mu_delta + np.trace(Big_S @ V_delta)
         mu_lambda_inv = s_bar/v_bar
@@ -124,7 +243,6 @@ def run_mfvi(mfvi_pack, Z_width, C, N, K, T):
         's_bar': s_bar,
         'S_bar_sigma': S_bar_sigma
     }
-    
-    return params, ELBO
 
+    return params, ELBO
 

@@ -1,18 +1,49 @@
 # Import libraries
 
 import numpy as np
-import matplotlib.pyplot as plt
-import pandas as pd
 import arviz as az
 from scipy.stats import invgamma, invwishart
 from numpy.linalg import lstsq
 
-# ── Gibbs sampling functions ─────────────────────────────────────────────────
-# Each function draws one sample from the conditional posterior of a single
-# parameter block, given the current values of all other parameters.
 
 def beta_0_sample(lam, Sigma_c_inv, gamma_c, y, X, XX, Z, Lambda_inv, Lambda_inv_sum, C, N):
-    # Posterior: beta_0 | rest ~ N(mu, V)
+    """Draw one sample of beta_0 from its conditional posterior with beta_c's marginalised out.
+
+    Parameters
+    ----------
+    lam : float
+        Current draw of the shrinkage parameter lambda.
+    Sigma_c_inv : list of length C of numpy.ndarray of shape (N, N)
+        Current per-country draw of Sigma_c^{-1}.
+    gamma_c : list of length C of numpy.ndarray of shape (N*Z_width,)
+        Current per-country draw of gamma_c.
+    y : numpy.ndarray of shape (C, T*N)
+        Column-major vectorized endogenous data, one row per country.
+    X : numpy.ndarray of shape (C, T, K)
+        Per-country design matrix of exchangeable regressors (endogenous and
+        W lags).
+    XX : numpy.ndarray of shape (C, K, K)
+        Per-country X_c.T @ X_c.
+    Z : numpy.ndarray of shape (T, Z_width)
+        Non-exchangeable regressors, shared across countries.
+    Lambda_inv : numpy.ndarray of shape (C, N*K, N*K)
+        Per-country inverse Minnesota-prior scale matrices.
+    Lambda_inv_sum : numpy.ndarray of shape (N*K, N*K)
+        Sum of `Lambda_inv` over countries.
+    C : int
+        Number of countries.
+    N : int
+        Number of endogenous variables.
+
+    Returns
+    -------
+    sample : numpy.ndarray of shape (N*K,)
+        Draw of beta_0 from its conditional posterior (beta_c's marginalised)
+    P_inv : list of length C of numpy.ndarray of shape (N*K, N*K)
+        Per-country beta_c conditional-posterior covariance matrices, computed
+        here for reuse by `beta_c_sample`.
+    """
+    # Posterior: beta_0 | rest (excluding beta_c) ~ N(mu, V)
     # V = lambda * (sum Lambda_inv_c)^{-1}
     # mu = V * (1/lambda) * sum_c Lambda_inv_c beta_c
     P_inv = [np.linalg.inv((1/lam)*Lambda_inv[c] + np.kron(Sigma_c_inv[c], XX[c])) for c in range(C)]
@@ -26,6 +57,31 @@ def beta_0_sample(lam, Sigma_c_inv, gamma_c, y, X, XX, Z, Lambda_inv, Lambda_inv
     return sample, P_inv
 
 def lambda_sample(beta_c, beta_0, Lambda_inv, C, N, K):
+    """Draw one sample of lambda from its conditional posterior,
+    lambda | rest ~ InvGamma(s_bar/2, v_bar/2).
+
+    v_bar = sum_c (beta_c - beta_0)' Lambda_inv_c (beta_c - beta_0).
+
+    Parameters
+    ----------
+    beta_c : list of length C of numpy.ndarray of shape (N*K,)
+        Current per-country draw of beta_c.
+    beta_0 : numpy.ndarray of shape (N*K,)
+        Current draw of beta_0.
+    Lambda_inv : list of length C of numpy.ndarray of shape (N*K, N*K)
+        Per-country inverse Minnesota-prior scale matrices.
+    C : int
+        Number of countries.
+    N : int
+        Number of endogenous variables.
+    K : int
+        Number of regressors per equation.
+
+    Returns
+    -------
+    float
+        Draw of lambda from its conditional posterior.
+    """
     # Posterior: lambda | rest ~ InvGamma(s_bar/2, v_bar/2)
     # v_bar = sum_c (beta_c - beta_0)' Lambda_inv_c (beta_c - beta_0)
     s_bar = C*N*K -1
@@ -34,6 +90,39 @@ def lambda_sample(beta_c, beta_0, Lambda_inv, C, N, K):
     return sample
 
 def beta_c_sample(lam, beta_0, Sigma_inv, gamma, V_beta_c, y_c, X_c, Z, Lambda_inv_c, N):
+    """Draw one sample of beta_c (for a single country) from its conditional
+    posterior, beta_c | rest ~ N(mu, V), with precision
+    (1/lambda) Lambda_inv_c + Sigma_inv (kron) X'X.
+
+    Parameters
+    ----------
+    lam : float
+        Current draw of the shrinkage parameter lambda.
+    beta_0 : numpy.ndarray of shape (N*K,)
+        Current draw of beta_0.
+    Sigma_inv : numpy.ndarray of shape (N, N)
+        Current draw of this country's Sigma_c^{-1}.
+    gamma : numpy.ndarray of shape (N*Z_width,)
+        Current draw of this country's gamma_c.
+    V_beta_c : numpy.ndarray of shape (N*K, N*K)
+        This country's beta_c conditional-posterior covariance matrix, as
+        returned by `beta_0_sample`.
+    y_c : numpy.ndarray of shape (T*N,)
+        Column-major vectorized endogenous data for this country.
+    X_c : numpy.ndarray of shape (T, K)
+        This country's design matrix of exchangeable regressors.
+    Z : numpy.ndarray of shape (T, Z_width)
+        Non-exchangeable regressors, shared across countries.
+    Lambda_inv_c : numpy.ndarray of shape (N*K, N*K)
+        This country's inverse Minnesota-prior scale matrix.
+    N : int
+        Number of endogenous variables.
+
+    Returns
+    -------
+    numpy.ndarray of shape (N*K,)
+        Draw of this country's beta_c from its conditional posterior.
+    """
     # Posterior: beta_c | rest ~ N(mu, V)
     # Precision = (1/lambda) Lambda_inv_c + Sigma_inv ⊗ X'X
     # r_c removes the gamma contribution from y before computing mu
@@ -43,6 +132,31 @@ def beta_c_sample(lam, beta_0, Sigma_inv, gamma, V_beta_c, y_c, X_c, Z, Lambda_i
     return sample
 
 def gamma_c_sample(Sigma_inv, beta, y_c, X_c, Z, ZZ, N):
+    """Draw one sample of gamma_c (for a single country) from its conditional
+    posterior, gamma_c | rest ~ N(mu, V), with precision Sigma_inv (kron) Z'Z.
+
+    Parameters
+    ----------
+    Sigma_inv : numpy.ndarray of shape (N, N)
+        Current draw of this country's Sigma_c^{-1}.
+    beta : numpy.ndarray of shape (N*K,)
+        Current draw of this country's beta_c.
+    y_c : numpy.ndarray of shape (T*N,)
+        Column-major vectorized endogenous data for this country.
+    X_c : numpy.ndarray of shape (T, K)
+        This country's design matrix of exchangeable regressors.
+    Z : numpy.ndarray of shape (T, Z_width)
+        Non-exchangeable regressors, shared across countries.
+    ZZ : numpy.ndarray of shape (Z_width, Z_width)
+        Z.T @ Z.
+    N : int
+        Number of endogenous variables.
+
+    Returns
+    -------
+    numpy.ndarray of shape (N*Z_width,)
+        Draw of this country's gamma_c from its conditional posterior.
+    """
     # Posterior: gamma_c | rest ~ N(mu, V)
     # Precision = Sigma_inv ⊗ Z'Z
     # r_c removes the beta contribution from y before computing mu
@@ -53,6 +167,32 @@ def gamma_c_sample(Sigma_inv, beta, y_c, X_c, Z, ZZ, N):
     return sample
 
 def Sigma_c_sample(Beta_c, gamma_c, Y_c, X_c, Z, N, T):
+    """Draw one sample of Sigma_c (for a single country) from its conditional
+    posterior, Sigma_c | rest ~ InvWishart(T, S_bar), where S_bar is the
+    residual sum of squares after removing fitted values.
+
+    Parameters
+    ----------
+    Beta_c : numpy.ndarray of shape (K, N)
+        This country's beta_c, reshaped to (K, N).
+    gamma_c : numpy.ndarray of shape (Z_width, N)
+        This country's gamma_c, reshaped to (Z_width, N).
+    Y_c : numpy.ndarray of shape (T, N)
+        This country's endogenous data.
+    X_c : numpy.ndarray of shape (T, K)
+        This country's design matrix of exchangeable regressors.
+    Z : numpy.ndarray of shape (T, Z_width)
+        Non-exchangeable regressors, shared across countries.
+    N : int
+        Number of endogenous variables.
+    T : int
+        Number of time periods.
+
+    Returns
+    -------
+    numpy.ndarray of shape (N, N)
+        Draw of this country's Sigma_c from its conditional posterior.
+    """
     # Posterior: Sigma_c | rest ~ InvWishart(T, S_bar)
     # S_bar is the residual sum of squares after removing fitted values
     resid = Y_c - X_c @ Beta_c - Z @ gamma_c
@@ -63,6 +203,32 @@ def Sigma_c_sample(Beta_c, gamma_c, Y_c, X_c, Z, N, T):
 # ── Diagnostics ───────────────────────────────────────────────────────────────
 
 def _compute_diagnostics(all_chains_data, n_burnin):
+    """Compute bulk effective sample size (ESS) and rank-normalised R-hat for
+    every scalar parameter component, across chains.
+
+    Flattens all parameters from all chains into a single
+    (n_chains, n_post, D) array, where D is the total number of scalar
+    components across all parameters, then hands it to arviz.
+
+    Parameters
+    ----------
+    all_chains_data : list of dict
+        One dict per chain, each with keys 'lam' (list of float), 'beta_0'
+        (list of numpy.ndarray of shape (N*K,)), 'beta_c' (list of list of
+        length C of numpy.ndarray of shape (N*K,)), 'gamma_c' (list of list
+        of length C of numpy.ndarray of shape (N*Z_width,)), and 'Sigma_c'
+        (list of list of length C of numpy.ndarray of shape (N, N)).
+    n_burnin : int
+        Number of initial post-warmup draws to discard from each chain before
+        computing diagnostics.
+
+    Returns
+    -------
+    ess : numpy.ndarray of shape (D,)
+        Bulk effective sample size for each scalar parameter component.
+    r_hat : numpy.ndarray of shape (D,)
+        Rank-normalised R-hat for each scalar parameter component.
+    """
     # Flatten all parameters from all chains into a single (n_chains, n_post, D)
     # array, where D is the total number of scalar components across all parameters.
     # arviz then computes bulk ESS and rank-normalised R-hat for each component.
@@ -92,6 +258,56 @@ def _compute_diagnostics(all_chains_data, n_burnin):
 # ── Gibbs sampler ────────────────────────────────────────────────────────────
 
 def run_gibbs(gibbs_pack, C, N, K, Z_width, T, n_chains=4, n_steps=10000, n_burnin=2000):
+    """Run a multi-chain Gibbs sampler over beta_0, lambda, beta_c, gamma_c and
+    Sigma_c, and compute convergence diagnostics.
+
+    Parameters
+    ----------
+    gibbs_pack : dict
+        Data pack produced by `data_prep.prep_data`, with (in order) keys
+        'Y' (numpy.ndarray, shape (C, T, N)), 'X' (numpy.ndarray, shape
+        (C, T, K)), 'XX' (numpy.ndarray, shape (C, K, K)), 'Z' (numpy.ndarray,
+        shape (T, Z_width)), 'ZZ' (numpy.ndarray, shape (Z_width, Z_width)),
+        'Lambda_inv' (numpy.ndarray, shape (C, N*K, N*K)), and
+        'Lambda_inv_sum' (numpy.ndarray, shape (N*K, N*K)).
+    C : int
+        Number of countries.
+    N : int
+        Number of endogenous variables.
+    K : int
+        Number of regressors per equation.
+    Z_width : int
+        Number of non-exchangeable regressors per equation.
+    T : int
+        Number of time periods.
+    n_chains : int, optional
+        Number of independent Gibbs chains to run. Default is 4.
+    n_steps : int, optional
+        Number of Gibbs sweeps per chain. Default is 10000.
+    n_burnin : int, optional
+        Number of initial sweeps per chain discarded before pooling samples
+        and computing diagnostics. Default is 2000.
+
+    Returns
+    -------
+    post_burnin_samples : dict
+        Post-burn-in samples pooled across all chains, with keys 'beta_0'
+        (numpy.ndarray, shape (n_chains*(n_steps-n_burnin), N*K)), 'lam'
+        (numpy.ndarray, shape (n_chains*(n_steps-n_burnin),)), 'beta_c'
+        (numpy.ndarray, shape (n_chains*(n_steps-n_burnin), C, N*K)),
+        'gamma_c' (numpy.ndarray, shape (n_chains*(n_steps-n_burnin), C,
+        N*Z_width)), 'Sigma_c' (numpy.ndarray, shape
+        (n_chains*(n_steps-n_burnin), C, N, N)), and 'delta_c' (list of
+        length n_chains*(n_steps-n_burnin), each a list of length C of
+        numpy.ndarray of shape (N*K + N*Z_width,), the concatenation of
+        beta_c and gamma_c per country and draw).
+    ess : numpy.ndarray of shape (D,)
+        Bulk effective sample size for each scalar parameter component (see
+        `_compute_diagnostics`).
+    r_hat : numpy.ndarray of shape (D,)
+        Rank-normalised R-hat for each scalar parameter component (see
+        `_compute_diagnostics`).
+    """
     Y, X, XX, Z, ZZ, Lambda_inv, Lambda_inv_sum = gibbs_pack.values()
 
     # Vectorise Y column-major so y[c] = vec(Y_c), matching the Kronecker convention
@@ -114,9 +330,8 @@ def run_gibbs(gibbs_pack, C, N, K, Z_width, T, n_chains=4, n_steps=10000, n_burn
     all_chains_data = []
 
     for chain_idx in range(n_chains):
-        # Small, controlled per-chain perturbations around grounded starting points —
-        # enough spread for a valid R-hat check, without starting chains far from
-        # the posterior's actual region (which was the root cause of poor mixing).
+        # Small, controlled per-chain perturbations around grounded starting points
+        # Enough spread for a valid R-hat check, without starting chains far from the posterior's actual region.
         noise_scale = 0.05 * (chain_idx + 1)
 
         beta_0      = beta_0_ols + np.random.randn(N*K) * noise_scale

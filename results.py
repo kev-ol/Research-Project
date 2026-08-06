@@ -11,6 +11,43 @@ from ssvi_c import calc_V_beta02, calc_mu_beta02, calc_V_deltac2, calc_mu_deltac
 """Posterior sample reconstruction from each method's variational/MCMC output"""
 
 def sample_from_mfvi(results_mfvi, mfvi_pack, C, N, K, T, n_samples=10000):
+    """Reconstruct posterior samples from the MFVI variational approximation.
+
+    Parameters
+    ----------
+    results_mfvi : dict
+        Output of `mfvi.run_mfvi`'s `params`, with (in order) keys
+        'mu_delta' (numpy.ndarray, shape (size_delta,)), 'V_delta'
+        (numpy.ndarray, shape (size_delta, size_delta)), 'v_bar' (float),
+        's_bar' (float), and 'S_bar_sigma' (list of length C of
+        numpy.ndarray, shape (N, N)).
+    mfvi_pack : dict
+        Data pack produced by `data_prep.prep_data`, must contain
+        'idx_deltac' (list of length C of int) and 'size_deltac' (int).
+    C : int
+        Number of countries.
+    N : int
+        Number of endogenous variables.
+    K : int
+        Number of regressors per equation.
+    T : int
+        Number of time periods.
+    n_samples : int, optional
+        Number of posterior samples to draw. Default is 10000.
+
+    Returns
+    -------
+    dict
+        Dictionary of reconstructed posterior samples with keys:
+        'beta_0' (list of length n_samples of numpy.ndarray of shape
+        (N*K,)), 'lam' (list of length n_samples of float), 'beta_c' (list
+        of length n_samples of list of length C of numpy.ndarray of shape
+        (N*K,)), 'gamma_c' (list of length n_samples of list of length C of
+        numpy.ndarray of shape (N*Z_width,)), 'delta_c' (list of length
+        n_samples of list of length C of numpy.ndarray of shape
+        (size_deltac,)), and 'Sigma_c' (list of length n_samples of list of
+        length C of numpy.ndarray of shape (N, N)).
+    """
     mu_delta, V_delta, v_bar, s_bar, S_bar_sigma = results_mfvi.values()
 
     idx_deltac = mfvi_pack["idx_deltac"]
@@ -43,6 +80,49 @@ def sample_from_mfvi(results_mfvi, mfvi_pack, C, N, K, T, n_samples=10000):
 
 
 def sample_from_ssvi_i(results_ssvi_i, ssvi_i_pack, C, N, K, T, n_samples=10000):
+    """Reconstruct posterior samples from the SSVI-I variational approximation.
+
+    Parameters
+    ----------
+    results_ssvi_i : dict
+        Output of `ssvi_i.run_ssvi_i`'s `params`, with (in order) keys
+        'mu_beta0' (numpy.ndarray, shape (N*K,)), 'V_beta0' (numpy.ndarray,
+        shape (N*K, N*K)), 'q_lambda' (numpy.ndarray, shape (n_chain,), the
+        converged lambda ULA chain), 'S_bar_sigma' (list of length C of
+        numpy.ndarray, shape (N, N)), and 'cov_deltac' (list of length C of
+        numpy.ndarray, shape (size_deltac, size_deltac)).
+    ssvi_i_pack : dict
+        Data pack produced by `data_prep.prep_data`, must contain (in order)
+        'Y' (numpy.ndarray, shape (C, T, N)), 'F' (sequence of length C of
+        numpy.ndarray, shape (T, K+Z_width)), 'FF' (sequence of length C of
+        numpy.ndarray, shape (K+Z_width, K+Z_width)), 'idx_deltac' (list of
+        int), 'size_deltac' (int), 'Pc' (numpy.ndarray, shape
+        (size_deltac, size_deltac)), 'Lambda_inv' (list of length C of
+        numpy.ndarray, shape (N*K, N*K)), and 'Lambda_inv_sum'
+        (numpy.ndarray, shape (N*K, N*K)).
+    C : int
+        Number of countries.
+    N : int
+        Number of endogenous variables.
+    K : int
+        Number of regressors per equation.
+    T : int
+        Number of time periods.
+    n_samples : int, optional
+        Number of posterior samples to draw. Default is 10000.
+
+    Returns
+    -------
+    dict
+        Dictionary of reconstructed posterior samples with keys: 'beta_0'
+        (list of length n_samples of numpy.ndarray of shape (N*K,)), 'lam'
+        (list of length n_samples of float), 'beta_c' (list of length
+        n_samples of numpy.ndarray of shape (C, N*K)), 'gamma_c' (list of
+        length n_samples of numpy.ndarray of shape (C, N*Z_width)),
+        'delta_c' (list of length n_samples of numpy.ndarray of shape
+        (C, size_deltac)), and 'Sigma_c' (list of length n_samples of
+        numpy.ndarray of shape (C, N, N)).
+    """
     mu_beta0, V_beta0, q_lambda_chain, S_bar_sigma, cov_deltac = results_ssvi_i.values()
     mu_sigma_inv = [T * np.linalg.inv(S_bar_sigma[c]) for c in range(C)]
     Y, F, FF, idx_deltac, size_deltac, Pc, Lambda_inv, Lambda_inv_sum = ssvi_i_pack.values()
@@ -84,6 +164,48 @@ def sample_from_ssvi_i(results_ssvi_i, ssvi_i_pack, C, N, K, T, n_samples=10000)
 
 
 def sample_from_ssvi_c(results_ssvi_c, ssvi_i_pack, C, N, K, T, n_samples=10000):
+    """Reconstruct posterior samples from the SSVI-C variational approximation.
+
+    Parameters
+    ----------
+    results_ssvi_c : dict
+        Output of `ssvi_c.run_ssvi_c`'s `params`, with (in order) keys
+        'q_lambda' (numpy.ndarray, shape (n_chain,), the converged lambda
+        ULA chain), 'S_bar_sigma' (list of length C of numpy.ndarray, shape
+        (N, N)), and 'cov_deltac' (list of length C of numpy.ndarray, shape
+        (size_deltac, size_deltac)).
+    ssvi_i_pack : dict
+        Data pack produced by `data_prep.prep_data`, must contain (in order)
+        'Y' (numpy.ndarray, shape (C, T, N)), 'F' (sequence of length C of
+        numpy.ndarray, shape (T, K+Z_width)), 'FF' (sequence of length C of
+        numpy.ndarray, shape (K+Z_width, K+Z_width)), 'idx_deltac' (list of
+        int), 'size_deltac' (int), 'Pc' (numpy.ndarray, shape
+        (size_deltac, size_deltac)), 'Lambda_inv' (list of length C of
+        numpy.ndarray, shape (N*K, N*K)), and 'Lambda_inv_sum'
+        (numpy.ndarray, shape (N*K, N*K)).
+    C : int
+        Number of countries.
+    N : int
+        Number of endogenous variables.
+    K : int
+        Number of regressors per equation.
+    T : int
+        Number of time periods.
+    n_samples : int, optional
+        Number of posterior samples to draw. Default is 10000.
+
+    Returns
+    -------
+    dict
+        Dictionary of reconstructed posterior samples with keys: 'beta_0'
+        (list of length n_samples of numpy.ndarray of shape (N*K,)), 'lam'
+        (list of length n_samples of float), 'beta_c' (list of length
+        n_samples of numpy.ndarray of shape (C, N*K)), 'gamma_c' (list of
+        length n_samples of numpy.ndarray of shape (C, N*Z_width)),
+        'delta_c' (list of length n_samples of numpy.ndarray of shape
+        (C, size_deltac)), and 'Sigma_c' (list of length n_samples of
+        numpy.ndarray of shape (C, N, N)).
+    """
     q_lambda_chain, S_bar_sigma, cov_deltac = results_ssvi_c.values()
     mu_sigma_inv = [T * np.linalg.inv(S_bar_sigma[c]) for c in range(C)]
     Y, F, FF, idx_deltac, size_deltac, Pc, Lambda_inv, Lambda_inv_sum = ssvi_i_pack.values()
@@ -134,7 +256,22 @@ def sample_from_ssvi_c(results_ssvi_c, ssvi_i_pack, C, N, K, T, n_samples=10000)
 """UQF (Uncertainty Quantification Factor)"""
 
 def compute_cov_true(results_gibbs, C):
-    """Empirical delta_c covariance from Gibbs draws, treated as ground truth."""
+    """Empirical delta_c covariance from Gibbs draws, treated as ground truth.
+
+    Parameters
+    ----------
+    results_gibbs : dict
+        Output of `gibbs.run_gibbs`'s `post_burnin_samples`, must contain key
+        'delta_c' (list of length n_draws of list of length C of
+        numpy.ndarray of shape (size_deltac,)).
+    C : int
+        Number of countries.
+
+    Returns
+    -------
+    list of length C of numpy.ndarray of shape (size_deltac, size_deltac)
+        Empirical covariance of the delta_c draws, per country.
+    """
     cov_true = []
     for c in range(C):
         delta_c_draws = np.array([results_gibbs["delta_c"][t][c] for t in range(len(results_gibbs["delta_c"]))])
@@ -143,7 +280,24 @@ def compute_cov_true(results_gibbs, C):
 
 
 def extract_cov_mfvi_pipeline(results_mfvi, mfvi_pack, C):
-    """Per-country delta_c covariance block sliced out of MFVI's full V_delta."""
+    """Per-country delta_c covariance block sliced out of MFVI's full V_delta.
+
+    Parameters
+    ----------
+    results_mfvi : dict
+        Output of `mfvi.run_mfvi`'s `params`, must contain key 'V_delta'
+        (numpy.ndarray, shape (size_delta, size_delta)).
+    mfvi_pack : dict
+        Data pack produced by `data_prep.prep_data`, must contain
+        'idx_deltac' (list of length C of int) and 'size_deltac' (int).
+    C : int
+        Number of countries.
+
+    Returns
+    -------
+    list of length C of numpy.ndarray of shape (size_deltac, size_deltac)
+        Per-country delta_c covariance blocks sliced from V_delta.
+    """
     idx_deltac = mfvi_pack["idx_deltac"]
     size_deltac = mfvi_pack["size_deltac"]
     V_delta = results_mfvi["V_delta"]
@@ -155,11 +309,45 @@ def extract_cov_mfvi_pipeline(results_mfvi, mfvi_pack, C):
     return cov_mfvi
 
 def cov2corr(cov):
+    """Convert a covariance matrix to a correlation matrix.
+
+    Parameters
+    ----------
+    cov : numpy.ndarray of shape (D, D)
+        Covariance matrix.
+
+    Returns
+    -------
+    numpy.ndarray of shape (D, D)
+        Corresponding correlation matrix.
+    """
     d = np.sqrt(np.diag(cov))
     d[d == 0] = 1e-12
     return cov / np.outer(d, d)
 
 def extract_cov_mfvi(V_delta, N, K, Z_width, C):
+    """Slice per-country delta_c covariance blocks directly out of MFVI's full
+    V_delta, without needing the full `mfvi_pack`.
+
+    Parameters
+    ----------
+    V_delta : numpy.ndarray of shape (size_delta, size_delta)
+        Full joint covariance matrix over [beta_0, delta_1, ..., delta_C],
+        as returned by `mfvi.calc_V_delta_naive`.
+    N : int
+        Number of endogenous variables.
+    K : int
+        Number of regressors per equation.
+    Z_width : int
+        Number of non-exchangeable regressors per equation.
+    C : int
+        Number of countries.
+
+    Returns
+    -------
+    list of length C of numpy.ndarray of shape (N*K + N*Z_width, N*K + N*Z_width)
+        Per-country delta_c covariance blocks.
+    """
     size_beta0 = N * K
     size_deltac = N * K + N * Z_width
     idx_deltac = [size_beta0 + c * size_deltac for c in range(C)]
@@ -168,17 +356,74 @@ def extract_cov_mfvi(V_delta, N, K, Z_width, C):
 
 
 def UQF(cov_true, cov_est):
+    """Compute the Uncertainty Quantification Factor (UQF) between a reference
+    covariance matrix and an estimated covariance matrix.
+
+    Parameters
+    ----------
+    cov_true : numpy.ndarray of shape (D, D)
+        Reference ("true") covariance matrix, e.g. from Gibbs draws.
+    cov_est : numpy.ndarray of shape (D, D)
+        Estimated covariance matrix from a variational method.
+
+    Returns
+    -------
+    float
+        UQF, defined as 1 / (largest generalized eigenvalue of the pencil
+        (cov_true, cov_est)).
+    """
     eigenvalues = eigh(cov_true, cov_est, eigvals_only=True)
     return 1 / np.max(eigenvalues)
 
 
 def compute_uqf(cov_true, cov_est_list, C):
+    """Compute the Uncertainty Quantification Factor (UQF) for every country.
+
+    Parameters
+    ----------
+    cov_true : list of length C of numpy.ndarray of shape (D, D)
+        Reference ("true") covariance matrix per country.
+    cov_est_list : list of length C of numpy.ndarray of shape (D, D)
+        Estimated covariance matrix per country.
+    C : int
+        Number of countries.
+
+    Returns
+    -------
+    list of length C of float
+        UQF value for each country.
+    """
     return [UQF(cov_true[c], cov_est_list[c]) for c in range(C)]
 
 
 """Accuracy Measure (Faes et al. 2011, ter Steege eq. 20) — vectorized + parallel"""
 
 def faes_accuracy(vi_samples, gibbs_samples, positive_support=False, grid_size=500):
+    """Compute the Faes et al. (2011) accuracy score between a VI method's
+    approximate posterior samples and Gibbs (reference) posterior samples for
+    a single scalar parameter.
+
+    Parameters
+    ----------
+    vi_samples : array_like of shape (T_vi,)
+        1-d samples from a VI method's approximate posterior.
+    gibbs_samples : array_like of shape (T_gibbs,)
+        1-d samples from the Gibbs (reference) posterior for the same
+        parameter.
+    positive_support : bool, optional
+        If True, both sample sets are log-transformed before density
+        estimation (for parameters with positive support, e.g. lambda or
+        Sigma_c diagonals). Default is False.
+    grid_size : int, optional
+        Number of grid points used to numerically integrate the density
+        overlap. Default is 500.
+
+    Returns
+    -------
+    float
+        Faes et al. (2011) accuracy score, in percent (100 = perfect overlap
+        of the two KDE-estimated densities).
+    """
     vi_samples = np.asarray(vi_samples)
     gibbs_samples = np.asarray(gibbs_samples)
 
@@ -199,9 +444,25 @@ def faes_accuracy(vi_samples, gibbs_samples, positive_support=False, grid_size=5
 
 
 def _faes_grid(vi_arr, gibbs_arr, positive_support=False, n_jobs=-1):
-    """
-    vi_arr, gibbs_arr: shape (T, C, D) — draws x countries x scalar-dim.
-    Returns shape (C, D) of accuracy scores, computed in parallel over (c,d) pairs.
+    """Compute Faes accuracy scores for a (country, dimension) grid of scalar
+    parameters, in parallel.
+
+    Parameters
+    ----------
+    vi_arr : numpy.ndarray of shape (T, C, D)
+        VI method draws x countries x scalar-dim.
+    gibbs_arr : numpy.ndarray of shape (T, C, D)
+        Gibbs draws x countries x scalar-dim.
+    positive_support : bool, optional
+        Passed through to `faes_accuracy`. Default is False.
+    n_jobs : int, optional
+        Number of parallel jobs passed to `joblib.Parallel`. Default is -1
+        (use all available cores).
+
+    Returns
+    -------
+    numpy.ndarray of shape (C, D)
+        Faes accuracy score for each (country, dimension) pair.
     """
     T, C, D = vi_arr.shape
     pairs = [(c, d) for c in range(C) for d in range(D)]
@@ -217,9 +478,25 @@ def _faes_grid(vi_arr, gibbs_arr, positive_support=False, n_jobs=-1):
 
 
 def _faes_vec(vi_arr, gibbs_arr, positive_support=False, n_jobs=-1):
-    """
-    vi_arr, gibbs_arr: shape (T, D) — draws x scalar-dim (no country axis).
-    Returns shape (D,) of accuracy scores.
+    """Compute Faes accuracy scores for a vector of scalar parameters (no
+    country axis), in parallel.
+
+    Parameters
+    ----------
+    vi_arr : numpy.ndarray of shape (T, D)
+        VI method draws x scalar-dim.
+    gibbs_arr : numpy.ndarray of shape (T, D)
+        Gibbs draws x scalar-dim.
+    positive_support : bool, optional
+        Passed through to `faes_accuracy`. Default is False.
+    n_jobs : int, optional
+        Number of parallel jobs passed to `joblib.Parallel`. Default is -1
+        (use all available cores).
+
+    Returns
+    -------
+    numpy.ndarray of shape (D,)
+        Faes accuracy score for each dimension.
     """
     T, D = vi_arr.shape
     results = Parallel(n_jobs=n_jobs)(
@@ -230,7 +507,27 @@ def _faes_vec(vi_arr, gibbs_arr, positive_support=False, n_jobs=-1):
 
 
 def prepare_gibbs_faes_arrays(gibbs_samples):
-    """Convert Gibbs sample lists to arrays once, for reuse across every VI method's Faes scoring."""
+    """Convert Gibbs sample lists to arrays once, for reuse across every VI
+    method's Faes scoring.
+
+    Parameters
+    ----------
+    gibbs_samples : dict
+        Output of `gibbs.run_gibbs`'s `post_burnin_samples`, must contain
+        keys 'beta_c' (array_like, shape (T, C, N*K)), 'gamma_c' (array_like,
+        shape (T, C, N*Z_width)), 'beta_0' (array_like, shape (T, N*K)),
+        'Sigma_c' (array_like, shape (T, C, N, N)), and 'lam' (array_like,
+        shape (T,)).
+
+    Returns
+    -------
+    dict
+        Dictionary with keys 'beta_c' (numpy.ndarray, shape (T, C, N*K)),
+        'gamma_c' (numpy.ndarray, shape (T, C, N*Z_width)), 'beta_0'
+        (numpy.ndarray, shape (T, N*K)), 'Sigma_c' (numpy.ndarray, shape
+        (T, C, N), the diagonal entries of Sigma_c), and 'lam' (array_like,
+        shape (T,), passed through unchanged).
+    """
     beta_c_gibbs = np.array(gibbs_samples['beta_c'])          # (T, C, N*K)
     gamma_c_gibbs = np.array(gibbs_samples['gamma_c'])        # (T, C, N*n_zc)
     beta_0_gibbs = np.array(gibbs_samples['beta_0'])          # (T, N*K)
@@ -249,10 +546,27 @@ def prepare_gibbs_faes_arrays(gibbs_samples):
 
 
 def compute_faes_scores(vi_samples, gibbs_arrays):
-    """Faes accuracy of a VI method's samples against Gibbs, for every parameter block.
+    """Faes accuracy of a VI method's samples against Gibbs, for every
+    parameter block.
 
-    gibbs_arrays: output of prepare_gibbs_faes_arrays, computed once and shared
-    across methods so the Gibbs conversion isn't redone per method.
+    Parameters
+    ----------
+    vi_samples : dict
+        Samples dict for one VI method, as returned by `sample_from_mfvi`,
+        `sample_from_ssvi_i`, or `sample_from_ssvi_c`, with keys 'beta_c',
+        'gamma_c', 'beta_0', 'Sigma_c', and 'lam'.
+    gibbs_arrays : dict
+        Output of `prepare_gibbs_faes_arrays`, computed once and shared
+        across methods so the Gibbs conversion isn't redone per method.
+
+    Returns
+    -------
+    dict
+        Dictionary with keys 'beta_c' (numpy.ndarray, shape (C, N*K)),
+        'gamma_c' (numpy.ndarray, shape (C, N*Z_width)), 'beta_0'
+        (numpy.ndarray, shape (N*K,)), 'lam' (float), and 'Sigma_c'
+        (numpy.ndarray, shape (C, N)) — the Faes accuracy score for each
+        parameter component.
     """
     beta_c_vi = np.array(vi_samples['beta_c'])          # (T, C, N*K)
     gamma_c_vi = np.array(vi_samples['gamma_c'])        # (T, C, N*n_zc)
@@ -272,7 +586,22 @@ def compute_faes_scores(vi_samples, gibbs_arrays):
 
 
 def plot_accuracy_boxplots(results_faes, method_name, C):
-    """Boxplots of Faes accuracy per parameter block, for one VI method vs Gibbs."""
+    """Boxplots of Faes accuracy per parameter block, for one VI method vs Gibbs.
+
+    Parameters
+    ----------
+    results_faes : dict
+        Output of `compute_faes_scores`.
+    method_name : str
+        Label for the VI method, used in the figure title.
+    C : int
+        Number of countries.
+
+    Returns
+    -------
+    None
+        Displays the matplotlib figure; nothing is returned.
+    """
     country_labels = [f'C{c+1}' for c in range(C)]
 
     fig, axes = plt.subplots(2, 3, figsize=(15, 10))
@@ -337,14 +666,31 @@ def plot_accuracy_boxplots(results_faes, method_name, C):
 """Impulse Response Functions"""
 
 def _build_lag_matrices(beta_c, N, L, K):
-    """
-    beta_c: (N*K,) equation-stacked coefficient vector for one country, one draw.
-    Matches kron(I_N, X_c) @ beta_c convention, where each equation's K-length
-    block has columns ordered [y_lags (lag-major, N*L), w_lags (rest)].
+    """Reshape a country's stacked beta_c coefficient vector into per-lag
+    coefficient matrices.
 
-    Returns A_list: list of L matrices, each (N, N), where A_list[l-1] = A_l,
-    i.e. the coefficient matrix on y_{t-l} in y_t = A_1 y_{t-1} + ... + A_L y_{t-L} + ...
-    A_list[l-1][i, j] = coefficient of equation i on variable j at lag l.
+    Matches kron(I_N, X_c) @ beta_c convention, where each equation's
+    K-length block has columns ordered [y_lags (lag-major, N*L), w_lags
+    (rest)].
+
+    Parameters
+    ----------
+    beta_c : numpy.ndarray of shape (N*K,)
+        Equation-stacked coefficient vector for one country, one posterior draw.
+    N : int
+        Number of endogenous variables.
+    L : int
+        Number of endogenous lags.
+    K : int
+        Number of regressors per equation.
+
+    Returns
+    -------
+    list of length L of numpy.ndarray of shape (N, N)
+        A_list, where `A_list[l-1]` is A_l, the coefficient matrix on
+        y_{t-l} in y_t = A_1 y_{t-1} + ... + A_L y_{t-L} + ...; i.e.
+        `A_list[l-1][i, j]` is the coefficient of equation i on variable j
+        at lag l.
     """
     A_list = [np.zeros((N, N)) for _ in range(L)]
     for i in range(N):
@@ -356,7 +702,23 @@ def _build_lag_matrices(beta_c, N, L, K):
 
 
 def _build_companion(A_list, N, L):
-    """Stack A_1..A_L into the top block row of the NL x NL companion matrix."""
+    """Stack A_1..A_L into the top block row of the NL x NL companion matrix.
+
+    Parameters
+    ----------
+    A_list : list of length L of numpy.ndarray of shape (N, N)
+        Per-lag coefficient matrices, as returned by `_build_lag_matrices`.
+    N : int
+        Number of endogenous variables.
+    L : int
+        Number of endogenous lags.
+
+    Returns
+    -------
+    numpy.ndarray of shape (N*L, N*L)
+        Companion-form matrix, with [A_1 A_2 ... A_L] as its top block row
+        and shift-down identity blocks below.
+    """
     NL = N * L
     Acomp = np.zeros((NL, NL))
     Acomp[:N, :] = np.hstack(A_list)          # [A_1 A_2 ... A_L]
@@ -365,16 +727,42 @@ def _build_companion(A_list, N, L):
     return Acomp
 
 
-def _draw_admissible_G(Sigma_c, sign_pattern, shock_idx=2, max_tries=1000, rng=None):
-    """
-    Sigma_c: (N, N) covariance matrix.
+def _draw_admissible_G(Sigma_c, sign_pattern, max_tries=1000, rng=None):
+    """Draw a structural impact matrix G_c whose 2x2 rotated block satisfies a
+    given sign pattern, by rejection sampling over random rotations.
+
     Finds G_c = P_c @ Q, Q = blockdiag(I_{N-2}, V) with V a random 2x2
     rotation matrix parameterized by a single angle theta ~ Uniform(0, 2*pi),
     such that G_c satisfies the full sign pattern on the 2x2 rotated block
     (rows 2,3 x columns 2,3, per eq. 11: interest/exchange rows against
     both the monetary policy shock column and the remaining column):
         G_c[row, col] * sign > 0   for each (row, col, sign) in sign_pattern
-    Returns (G_c, n_tries). Raises RuntimeError if none found within max_tries.
+
+    Parameters
+    ----------
+    Sigma_c : numpy.ndarray of shape (N, N)
+        Covariance matrix for one country, one posterior draw.
+    sign_pattern : sequence of (int, int, float) tuples
+        (row, col, sign) triples; each entry constrains
+        `G_c[row, col] * sign > 0`.
+    shock_idx : int, optional
+        Column index (0-based) of the monetary policy shock in G_c. Default is 2.
+    max_tries : int, optional
+        Maximum number of rejection-sampling attempts. Default is 1000.
+    rng : numpy.random.Generator or None, optional
+        Random number generator; a new default generator is created if None.
+
+    Returns
+    -------
+    G_c : numpy.ndarray of shape (N, N)
+        Admissible structural impact matrix.
+    n_tries : int
+        Number of rotation draws needed to find an admissible `G_c`.
+
+    Raises
+    ------
+    RuntimeError
+        If no admissible rotation is found within `max_tries` attempts.
     """
     if rng is None:
         rng = np.random.default_rng()
@@ -410,30 +798,42 @@ def compute_irfs(beta_samples, sigma_samples, N, L, K, C, H=25,
 
     Parameters
     ----------
-    beta_samples : (n_draws, C, N*K) array
-    sigma_samples : (n_draws, C, N, N) array
-    N : number of endogenous variables
-    L : number of lags
-    K : total columns of X_c (N*L + w-lag columns); only the first N*L
+    beta_samples : numpy.ndarray of shape (n_draws, C, N*K)
+        Posterior draws of beta_c, per draw and country.
+    sigma_samples : numpy.ndarray of shape (n_draws, C, N, N)
+        Posterior draws of Sigma_c, per draw and country.
+    N : int
+        Number of endogenous variables.
+    L : int
+        Number of lags.
+    K : int
+        Total columns of X_c (N*L + w-lag columns); only the first N*L
         coefficients per equation are used (lag block), the rest (w_lags,
         analogous to gamma_c) are dropped as they cancel in the IRF.
-    C : number of countries
-    H : horizon (IRF computed for h = 0, ..., H)
-    shock_idx : column index (0-based) of the monetary policy shock in G_c.
+    C : int
+        Number of countries.
+    H : int, optional
+        Horizon (IRF computed for h = 0, ..., H). Default is 25.
+    shock_idx : int, optional
+        Column index (0-based) of the monetary policy shock in G_c.
         Default 2 assumes ordering [output, price, interest rate, exchange
         rate] per eq. (11), so monetary policy is the 3rd shock -> index 2.
-    sign_pattern : tuple of (row, col, sign) triples checked against G_c,
-        covering the full 2x2 rotated block (both columns 2 and 3, per
-        eq. 11), not just the monetary policy shock's own column.
-    max_tries : max rejection-sampling attempts per (draw, country).
-    seed : RNG seed for reproducibility.
+    sign_pattern : tuple of (int, int, float) triples, optional
+        (row, col, sign) triples checked against G_c, covering the full 2x2
+        rotated block (both columns 2 and 3, per eq. 11), not just the
+        monetary policy shock's own column.
+    max_tries : int, optional
+        Max rejection-sampling attempts per (draw, country). Default is 1000.
+    seed : int or None, optional
+        RNG seed for reproducibility. Default is None.
 
     Returns
     -------
-    irfs : (n_draws, C, H+1, N) array
-        irfs[d, c, h, :] = response of the N endogenous variables at
+    irfs : numpy.ndarray of shape (n_draws, C, H+1, N)
+        `irfs[d, c, h, :]` is the response of the N endogenous variables at
         horizon h to a unit monetary policy shock, for draw d, country c.
-    n_tries : (n_draws, C) array of how many rotation draws were needed.
+    n_tries : numpy.ndarray of shape (n_draws, C), dtype int
+        Number of rotation draws needed for each (draw, country) pair.
     """
     rng = np.random.default_rng(seed)
     n_draws = beta_samples.shape[0]
@@ -453,8 +853,7 @@ def compute_irfs(beta_samples, sigma_samples, N, L, K, C, H=25,
 
             # --- structural impact matrix ---
             G_c, tries = _draw_admissible_G(
-                Sigma_c, sign_pattern=sign_pattern,
-                shock_idx=shock_idx, max_tries=max_tries, rng=rng
+                Sigma_c, sign_pattern=sign_pattern, max_tries=max_tries, rng=rng
             )
             n_tries[d, c] = tries
             impact = G_c[:, shock_idx]           # period-0 response, length N
@@ -472,10 +871,27 @@ def compute_irfs(beta_samples, sigma_samples, N, L, K, C, H=25,
 
 def plot_irfs_comparison(gibbs_irfs, vi_irfs, country_names, variable_names, vi_label="VI"):
     """
-    gibbs_irfs: (n_draws_gibbs, C, H+1, N) array from compute_irfs — plotted as
+    Plot a grid of impulse response comparisons between Gibbs and a VI method.
+
+    Parameters
+    ----------
+    gibbs_irfs : numpy.ndarray of shape (n_draws_gibbs, C, H+1, N)
+        IRFs from `compute_irfs` using Gibbs posterior draws — plotted as
         blue fanchart (5-95 percentile, 5% steps) + black solid median.
-    vi_irfs: (n_draws_vi, C, H+1, N) array from compute_irfs — plotted as
-        red solid median + red dashed 5/95 percentiles.
+    vi_irfs : numpy.ndarray of shape (n_draws_vi, C, H+1, N)
+        IRFs from `compute_irfs` using a VI method's posterior draws —
+        plotted as red solid median + red dashed 5/95 percentiles.
+    country_names : sequence of length C of str
+        Country labels, used as column titles.
+    variable_names : sequence of length N of str
+        Variable labels, used as row y-labels.
+    vi_label : str, optional
+        Label for the VI method, used in the figure title. Default is "VI".
+
+    Returns
+    -------
+    None
+        Displays the matplotlib figure; nothing is returned.
     """
     n_draws_g, C, H_plus_1, N = gibbs_irfs.shape
     horizons = np.arange(H_plus_1)
@@ -513,7 +929,7 @@ def plot_irfs_comparison(gibbs_irfs, vi_irfs, country_names, variable_names, vi_
             if c == 0:
                 ax.set_ylabel(variable_names[n])
             if n == N - 1:
-                ax.set_xlabel("Horizon") 
+                ax.set_xlabel("Horizon")
     fig.suptitle(f"Gibbs vs {vi_label}: Impulse Response Comparison", y=1.02)
     plt.tight_layout()
     plt.show()
@@ -521,11 +937,21 @@ def plot_irfs_comparison(gibbs_irfs, vi_irfs, country_names, variable_names, vi_
 
 def compute_wasserstein_curve(gibbs_irfs, vi_irfs):
     """
-    gibbs_irfs: (n_draws_gibbs, C, H+1, N)
-    vi_irfs:    (n_draws_vi, C, H+1, N)
+    Compute the Wasserstein distance between Gibbs and VI IRF draw
+    distributions, at every country/horizon/variable.
 
-    Returns: distances, shape (C, H+1, N) — Wasserstein distance between the
-    Gibbs and VI empirical draw distributions at each country/horizon/variable.
+    Parameters
+    ----------
+    gibbs_irfs : numpy.ndarray of shape (n_draws_gibbs, C, H+1, N)
+        IRFs from `compute_irfs` using Gibbs posterior draws.
+    vi_irfs : numpy.ndarray of shape (n_draws_vi, C, H+1, N)
+        IRFs from `compute_irfs` using a VI method's posterior draws.
+
+    Returns
+    -------
+    numpy.ndarray of shape (C, H+1, N)
+        Wasserstein distance between the Gibbs and VI empirical draw
+        distributions at each country/horizon/variable.
     """
     _, C, H_plus_1, N = gibbs_irfs.shape
     distances = np.zeros((C, H_plus_1, N))
@@ -541,11 +967,27 @@ def compute_wasserstein_curve(gibbs_irfs, vi_irfs):
 
 def plot_wasserstein_grid_comparison(distances_dict, country_names, variable_names):
     """
-    distances_dict: dict mapping method label -> (C, H+1, N) array from
-        compute_wasserstein_curve, e.g. {"mfvi": wass_mfvi, "SSVI_I": wass_ssvi_i,
-        "SSVI_C": wass_ssvi_c}
+    Plot a grid comparison of Wasserstein-distance curves for multiple VI
+    methods against Gibbs.
+
     Layout matches the IRF grid: rows = variables, columns = countries.
     Each panel overlays one line per method.
+
+    Parameters
+    ----------
+    distances_dict : dict
+        Mapping from method label (str) to numpy.ndarray of shape
+        (C, H+1, N) from `compute_wasserstein_curve`, e.g.
+        {"mfvi": wass_mfvi, "SSVI_I": wass_ssvi_i, "SSVI_C": wass_ssvi_c}.
+    country_names : sequence of length C of str
+        Country labels, used as column titles.
+    variable_names : sequence of length N of str
+        Variable labels, used as row y-labels.
+
+    Returns
+    -------
+    None
+        Displays the matplotlib figure; nothing is returned.
     """
     method_names = list(distances_dict.keys())
     C, H_plus_1, N = next(iter(distances_dict.values())).shape
@@ -577,7 +1019,25 @@ def plot_wasserstein_grid_comparison(distances_dict, country_names, variable_nam
 
 
 def plot_accuracy_boxplots_pooled(results_dict, method_name, method_key):
-    """Same layout as plot_accuracy_boxplots, but pooled across all seeds in results_dict."""
+    """Same layout as `plot_accuracy_boxplots`, but pooled across all seeds in
+    results_dict.
+
+    Parameters
+    ----------
+    results_dict : dict
+        Mapping from seed to a per-seed results dict, each containing key
+        "C" (int) and `method_key` (dict with key "faes", the output of
+        `compute_faes_scores`).
+    method_name : str
+        Label for the VI method, used in the figure title.
+    method_key : str
+        Key into each seed's results dict identifying this method's results.
+
+    Returns
+    -------
+    None
+        Displays the matplotlib figure; nothing is returned.
+    """
     seeds = list(results_dict.keys())
     C = results_dict[seeds[0]]["C"]
 
@@ -638,6 +1098,33 @@ def plot_accuracy_boxplots_pooled(results_dict, method_name, method_key):
     plt.show()
 
 def corr_mae_table(results, N, K, Z_width):
+    """Compute, per country, the mean absolute correlation error of each VI
+    method's delta_c correlation structure against Gibbs.
+
+    Parameters
+    ----------
+    results : dict
+        Single-seed results dict, with keys "C" (int), "mfvi" (dict with
+        "results" sub-dict containing "V_delta"), "ssvi_i" (dict with
+        "results" sub-dict containing "cov_deltac"), "ssvi_c" (dict with
+        "results" sub-dict containing "cov_deltac"), "cov_true" (list of
+        length C of numpy.ndarray, the reference covariance per country),
+        and "config" (object with attribute `country_names`, a sequence of
+        length C of str).
+    N : int
+        Number of endogenous variables.
+    K : int
+        Number of regressors per equation.
+    Z_width : int
+        Number of non-exchangeable regressors per equation.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Rows indexed by country name, columns ["MFVI", "SSVI-I", "SSVI-C"],
+        values the mean absolute correlation error vs Gibbs, rounded to 4
+        decimal places.
+    """
     C = results["C"]
     method_names = ["MFVI", "SSVI-I", "SSVI-C"]
     V_delta = results["mfvi"]["results"]["V_delta"]
@@ -662,6 +1149,26 @@ def corr_mae_table(results, N, K, Z_width):
     return pd.DataFrame(table, index=country_names).round(4)
 
 def plot_corr_mae_boxplots(results_dict, N, K, Z_width):
+    """Boxplots of mean absolute delta_c correlation error vs Gibbs, pooled
+    across countries and seeds, for each VI method.
+
+    Parameters
+    ----------
+    results_dict : dict
+        Mapping from seed to a single-seed results dict (see
+        `corr_mae_table` for its required structure).
+    N : int
+        Number of endogenous variables.
+    K : int
+        Number of regressors per equation.
+    Z_width : int
+        Number of non-exchangeable regressors per equation.
+
+    Returns
+    -------
+    None
+        Displays the matplotlib figure; nothing is returned.
+    """
     seeds = list(results_dict.keys())
     method_names = ["MFVI", "SSVI-I", "SSVI-C"]
     pooled = {name: [] for name in method_names}
@@ -694,6 +1201,28 @@ def plot_corr_mae_boxplots(results_dict, N, K, Z_width):
     plt.show()
 
 def plot_deltac_corr_diff_heatmaps(results, N, K, Z_width, seed):
+    """Plot, for each country, heatmaps of the delta_c correlation-matrix
+    difference (each VI method minus Gibbs).
+
+    Parameters
+    ----------
+    results : dict
+        Single-seed results dict (see `corr_mae_table` for its required
+        structure).
+    N : int
+        Number of endogenous variables.
+    K : int
+        Number of regressors per equation.
+    Z_width : int
+        Number of non-exchangeable regressors per equation.
+    seed : int or str
+        Seed identifier, used only in the figure title.
+
+    Returns
+    -------
+    None
+        Displays one matplotlib figure per country; nothing is returned.
+    """
     C = results["C"]
     country_names = results["config"].country_names
 
@@ -729,6 +1258,22 @@ def plot_deltac_corr_diff_heatmaps(results, N, K, Z_width, seed):
             plt.show()
 
 def plot_uqf_boxplot(results_dict, methods=("mfvi", "ssvi_i", "ssvi_c")):
+    """Boxplot of UQF values, pooled across seeds, for each method.
+
+    Parameters
+    ----------
+    results_dict : dict
+        Mapping from seed to a dict containing, for each entry in `methods`,
+        a sub-dict with key "uqf" (array_like of float, the per-country UQF
+        values for that seed and method).
+    methods : sequence of str, optional
+        Method names to include. Default is ("mfvi", "ssvi_i", "ssvi_c").
+
+    Returns
+    -------
+    None
+        Displays the matplotlib figure; nothing is returned.
+    """
     seeds = list(results_dict.keys())
     pooled = {method: np.concatenate([results_dict[seed][method]["uqf"] for seed in seeds]) for method in methods}
 
@@ -738,8 +1283,39 @@ def plot_uqf_boxplot(results_dict, methods=("mfvi", "ssvi_i", "ssvi_c")):
     ax.grid(axis='y', alpha=0.3)
     plt.tight_layout()
     plt.show()
-    
+
 def plot_conditional_mean_grid(methods, n_bins=10, title=None):
+    """Plot, for several methods, the conditional mean of a coefficient given
+    lambda, binned into quantiles of lambda, one line per country.
+
+    Parameters
+    ----------
+    methods : sequence of tuple
+        Each tuple is (name, lam, coef_by_country, country_names,
+        beta0_samples):
+        name : str
+            Method label, used as the subplot title.
+        lam : array_like of shape (n_samples,)
+            Posterior samples of lambda for this method.
+        coef_by_country : sequence of length C of array_like of shape (n_samples,)
+            Posterior samples of a single coefficient, per country.
+        country_names : sequence of length C of str
+            Country labels, used in the legend.
+        beta0_samples : array_like of shape (n_samples,) or None
+            Posterior samples of the corresponding beta_0 coefficient, or
+            None to skip plotting it.
+    n_bins : int, optional
+        Number of quantile bins of lambda to average within. Default is 10.
+    title : str or None, optional
+        Overall figure title. Default is None.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        The created figure.
+    axes : numpy.ndarray of matplotlib.axes.Axes
+        The created 2x2 grid of axes.
+    """
     fig, axes = plt.subplots(2, 2, figsize=(10, 9), sharey=True)
     handles, labels = None, None
 
@@ -771,6 +1347,30 @@ def plot_conditional_mean_grid(methods, n_bins=10, title=None):
     return fig, axes
 
 def plot_conditional_mean_by_seed(results_by_seed, k, n_bins=10):
+    """For each seed, plot the conditional mean of `beta_c[:, :, k]` (and the
+    matching `beta_0[k]`) given lambda, for every method, using
+    `plot_conditional_mean_grid`.
+
+    Parameters
+    ----------
+    results_by_seed : dict
+        Mapping from seed to a results dict containing, for each of "mfvi",
+        "ssvi_i", "ssvi_c", "gibbs", a sub-dict (keyed "samples" for VI
+        methods, "results" for "gibbs") with keys "beta_c" (array_like,
+        shape (n_samples, C, N*K)), "beta_0" (array_like, shape
+        (n_samples, N*K)), and "lam" (array_like, shape (n_samples,)); and
+        key "config" (object with attribute `country_names`).
+    k : int
+        Index into the flattened N*K coefficient vector to plot.
+    n_bins : int, optional
+        Number of quantile bins of lambda to average within. Default is 10.
+
+    Returns
+    -------
+    dict
+        Mapping from seed to the matplotlib.figure.Figure produced for that
+        seed.
+    """
     figs = {}
     for seed, results in results_by_seed.items():
         arr = {
@@ -803,6 +1403,37 @@ def plot_conditional_mean_by_seed(results_by_seed, k, n_bins=10):
 
 def coverage_table(results_by_seed, true_by_seed, param_key, methods,
                     levels=(0.5, 0.8, 0.95), axis_type="country"):
+    """Compute empirical credible-interval coverage of a parameter, pooled
+    across seeds (and countries, if applicable), for each method.
+
+    Parameters
+    ----------
+    results_by_seed : dict
+        Mapping from seed to a dict of method -> dict (keyed "results" for
+        "gibbs", "samples" otherwise) containing `param_key` (array_like of
+        shape (n_samples, C, ...) if `axis_type="country"`, or
+        (n_samples, ...) if `axis_type="vector"`).
+    true_by_seed : dict
+        Mapping from seed to a dict of true parameter values (e.g.
+        `simulate.simulate_data`'s `true_params`), containing `param_key`.
+    param_key : str
+        Which parameter to evaluate coverage for (e.g. "beta_c", "beta_0").
+    methods : sequence of str
+        Method names to include (e.g. ("mfvi", "ssvi_i", "ssvi_c", "gibbs")).
+    levels : sequence of float, optional
+        Central credible-interval levels to evaluate. Default is
+        (0.5, 0.8, 0.95).
+    axis_type : str, optional
+        "country" for parameters with a country axis (e.g. beta_c,
+        gamma_c), or "vector" for parameters without one (e.g. beta_0).
+        Default is "country".
+
+    Returns
+    -------
+    pandas.DataFrame
+        Rows indexed by method, columns labeled e.g. "50%", "80%", "95%",
+        values the empirical coverage proportion at that level.
+    """
     # axis_type: "country" (e.g. beta_c, gamma_c), "vector" (e.g. beta_0)
     hits = {method: {level: [] for level in levels} for method in methods}
 
@@ -834,6 +1465,30 @@ def coverage_table(results_by_seed, true_by_seed, param_key, methods,
     return table
 
 def plot_lambda_intervals(results_by_seed, true_by_seed, methods, levels=(0.5, 0.8, 0.95), ax=None):
+    """Plot, per seed and method, credible intervals for lambda at several
+    levels alongside the true simulating value.
+
+    Parameters
+    ----------
+    results_by_seed : dict
+        Mapping from seed to a dict of method -> dict (keyed "results" for
+        "gibbs", "samples" otherwise) containing "lam" (array_like of
+        float).
+    true_by_seed : dict
+        Mapping from seed to a dict containing "lam" (float), the true
+        simulating value of lambda for that seed.
+    methods : sequence of str
+        Method names to include.
+    levels : sequence of float, optional
+        Central credible-interval levels to plot. Default is (0.5, 0.8, 0.95).
+    ax : matplotlib.axes.Axes or None, optional
+        Axes to draw on; a new figure and axes are created if None.
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+        The axes the intervals were drawn on.
+    """
     if ax is None:
         fig, ax = plt.subplots(figsize=(8, 6))
     seeds = list(results_by_seed.keys())
@@ -867,6 +1522,31 @@ def plot_lambda_intervals(results_by_seed, true_by_seed, methods, levels=(0.5, 0
     return ax
 
 def plot_diagnostics(ssvi_i_trace, ssvi_c_trace, ssvi_i_ess, ssvi_c_ess, rhat, title_suffix=""):
+    """Plot ULA trace, ESS-across-iterations, and R-hat diagnostics for
+    SSVI-I and SSVI-C.
+
+    Parameters
+    ----------
+    ssvi_i_trace : array_like of shape (n_steps,)
+        log(lambda) ULA trace for SSVI-I (typically the last outer iteration).
+    ssvi_c_trace : array_like of shape (n_steps,)
+        log(lambda) ULA trace for SSVI-C (typically the last outer iteration).
+    ssvi_i_ess : sequence of float
+        Effective sample size at each CAVI iteration, for SSVI-I.
+    ssvi_c_ess : sequence of float
+        Effective sample size at each CAVI iteration, for SSVI-C.
+    rhat : array_like of shape (D,)
+        R-hat value for each scalar parameter component (e.g. from
+        `gibbs._compute_diagnostics`).
+    title_suffix : str, optional
+        Text appended to each subplot title. Default is "".
+
+    Returns
+    -------
+    None
+        Displays the matplotlib figure and prints an R-hat summary; nothing
+        is returned.
+    """
     fig, axes = plt.subplots(1, 4, figsize=(19, 4))
 
     axes[0].plot(ssvi_i_trace)
