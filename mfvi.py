@@ -3,6 +3,7 @@
 import numpy as np
 
 """MFVI Update Functions"""
+
 def calc_V_delta(mu_lambda_inv, mu_sigma_inv, FF, Big_S, idx_deltac, size_deltac, Pc, C):
     """Compute the full joint covariance matrix V_delta over [beta_0, delta_1,
     ..., delta_C] by direct inversion of the joint precision matrix.
@@ -83,7 +84,7 @@ def calc_mu_delta(V_delta, mu_sigma_inv, Y, F, idx_deltac, size_deltac, Pc, C):
     sum = np.zeros(V_delta.shape[0])
     for c in range(C):
         start = idx_deltac[c]
-        # (A kron B) vec(X) = vec(A X B.T)
+        # use (A kron B) vec(X) = vec(A X B.T)
         sum[start : start + size_deltac] += Pc.T @ (F[c].T @ Y[c, :, :] @ mu_sigma_inv[c]).flatten(order='F')
     return V_delta @ sum
 

@@ -8,9 +8,9 @@ from ssvi_i import calc_V_deltac, calc_mu_deltac
 from ssvi_c import calc_V_beta02, calc_mu_beta02, calc_V_deltac2, calc_mu_deltac2
 
 
-"""Posterior sample reconstruction from each method's variational/MCMC output"""
+"""Posterior sample reconstruction from each method's VI output"""
 
-def sample_from_mfvi(results_mfvi, mfvi_pack, C, N, K, T, n_samples=10000):
+def sample_from_mfvi(results_mfvi, mfvi_pack, C, N, K, T, n_samples=10000, rng=None):
     """Reconstruct posterior samples from the MFVI variational approximation.
 
     Parameters
@@ -34,6 +34,9 @@ def sample_from_mfvi(results_mfvi, mfvi_pack, C, N, K, T, n_samples=10000):
         Number of time periods.
     n_samples : int, optional
         Number of posterior samples to draw. Default is 10000.
+    rng : int, numpy.random.SeedSequence, numpy.random.Generator, or None, optional
+        Source of randomness for the reconstructed posterior samples. If
+        None (default), a fresh, non-reproducible generator is used.
 
     Returns
     -------
@@ -48,26 +51,27 @@ def sample_from_mfvi(results_mfvi, mfvi_pack, C, N, K, T, n_samples=10000):
         (size_deltac,)), and 'Sigma_c' (list of length n_samples of list of
         length C of numpy.ndarray of shape (N, N)).
     """
+    rng = np.random.default_rng(rng)
     mu_delta, V_delta, v_bar, s_bar, S_bar_sigma = results_mfvi.values()
 
     idx_deltac = mfvi_pack["idx_deltac"]
     size_deltac = mfvi_pack["size_deltac"]
 
-    # --- delta samples (beta_0, beta_c, gamma_c, delta_c all come from this) ---
+    # delta samples (beta_0, beta_c, gamma_c, delta_c all come from this)
     L = np.linalg.cholesky(V_delta)
-    deltas = mu_delta + (L @ np.random.normal(size=(len(mu_delta), n_samples))).T  # (n_samples, size_delta)
+    deltas = mu_delta + (L @ rng.normal(size=(len(mu_delta), n_samples))).T
 
-    beta_0_samples = deltas[:, :idx_deltac[0]]  # (n_samples, size_beta0)
+    beta_0_samples = deltas[:, :idx_deltac[0]] 
 
-    beta_c_samples = [deltas[:, idx_deltac[c]:idx_deltac[c] + N*K] for c in range(C)]              # list of (n_samples, N*K)
-    gamma_c_samples = [deltas[:, idx_deltac[c] + N*K:idx_deltac[c] + size_deltac] for c in range(C)]  # list of (n_samples, size_gammac)
-    delta_c_samples = [deltas[:, idx_deltac[c]:idx_deltac[c] + size_deltac] for c in range(C)]     # list of (n_samples, size_deltac)
+    beta_c_samples = [deltas[:, idx_deltac[c]:idx_deltac[c] + N*K] for c in range(C)]  
+    gamma_c_samples = [deltas[:, idx_deltac[c] + N*K:idx_deltac[c] + size_deltac] for c in range(C)] 
+    delta_c_samples = [deltas[:, idx_deltac[c]:idx_deltac[c] + size_deltac] for c in range(C)]    
 
-    # --- lambda samples (cheap, vectorize trivially) ---
-    lam_samples = invgamma.rvs(s_bar/2, scale=v_bar/2, size=n_samples)
+    # lambda samples (cheap, vectorize trivially)
+    lam_samples = invgamma.rvs(s_bar/2, scale=v_bar/2, size=n_samples, random_state=rng)
 
-    # --- Sigma_c samples (vectorized per country via scipy's size argument) ---
-    Sigma_c_samples = [invwishart.rvs(T, S_bar_sigma[c], size=n_samples) for c in range(C)]  # each: (n_samples, N, N)
+    # Sigma_c samples (vectorized per country via scipy's size argument)
+    Sigma_c_samples = [invwishart.rvs(T, S_bar_sigma[c], size=n_samples, random_state=rng) for c in range(C)]  
 
     return {
         'beta_0': list(beta_0_samples),
@@ -79,7 +83,7 @@ def sample_from_mfvi(results_mfvi, mfvi_pack, C, N, K, T, n_samples=10000):
     }
 
 
-def sample_from_ssvi_i(results_ssvi_i, ssvi_i_pack, C, N, K, T, n_samples=10000):
+def sample_from_ssvi_i(results_ssvi_i, ssvi_i_pack, C, N, K, T, n_samples=10000, rng=None):
     """Reconstruct posterior samples from the SSVI-I variational approximation.
 
     Parameters
@@ -110,6 +114,10 @@ def sample_from_ssvi_i(results_ssvi_i, ssvi_i_pack, C, N, K, T, n_samples=10000)
         Number of time periods.
     n_samples : int, optional
         Number of posterior samples to draw. Default is 10000.
+    rng : int, numpy.random.SeedSequence, numpy.random.Generator, or None, optional
+        Source of randomness for the reconstructed posterior samples
+        (including the lambda-KDE resampling). If None (default), a fresh,
+        non-reproducible generator is used.
 
     Returns
     -------
@@ -123,6 +131,7 @@ def sample_from_ssvi_i(results_ssvi_i, ssvi_i_pack, C, N, K, T, n_samples=10000)
         (C, size_deltac)), and 'Sigma_c' (list of length n_samples of
         numpy.ndarray of shape (C, N, N)).
     """
+    rng = np.random.default_rng(rng)
     mu_beta0, V_beta0, q_lambda_chain, S_bar_sigma, cov_deltac = results_ssvi_i.values()
     mu_sigma_inv = [T * np.linalg.inv(S_bar_sigma[c]) for c in range(C)]
     Y, F, FF, idx_deltac, size_deltac, Pc, Lambda_inv, Lambda_inv_sum = ssvi_i_pack.values()
@@ -130,11 +139,11 @@ def sample_from_ssvi_i(results_ssvi_i, ssvi_i_pack, C, N, K, T, n_samples=10000)
     # lambda: sample from a KDE fit to the converged ULA chain (log-space, since lambda > 0)
     lam_chain = np.asarray(q_lambda_chain)
     kde_lam = gaussian_kde(np.log(lam_chain))
-    lam_samples = np.exp(kde_lam.resample(n_samples).flatten())
+    lam_samples = np.exp(kde_lam.resample(n_samples, seed=rng).flatten())
 
     # beta_0: independent draw, paired with lam_samples by index
     L_beta0 = np.linalg.cholesky(V_beta0)
-    beta_0_samples = mu_beta0 + (L_beta0 @ np.random.normal(size=(len(mu_beta0), n_samples))).T  # (n_samples, size_beta0)
+    beta_0_samples = mu_beta0 + (L_beta0 @ rng.normal(size=(len(mu_beta0), n_samples))).T 
 
     # V_deltac, mu_deltac: both batched over the same (lam, beta0) pairs
     V_deltac = calc_V_deltac(lam_samples, mu_sigma_inv, FF, Lambda_inv, size_deltac, Pc, C, N, K)
@@ -142,15 +151,15 @@ def sample_from_ssvi_i(results_ssvi_i, ssvi_i_pack, C, N, K, T, n_samples=10000)
 
     delta_c_samples_arr = np.empty((n_samples, C, size_deltac))
     for c in range(C):
-        L_c = np.linalg.cholesky(V_deltac[c])                 # (n_samples, size_deltac, size_deltac)
-        z = np.random.normal(size=(n_samples, size_deltac))
+        L_c = np.linalg.cholesky(V_deltac[c])          
+        z = rng.normal(size=(n_samples, size_deltac))
         delta_c_samples_arr[:, c, :] = mu_deltac[c] + np.einsum('nij,nj->ni', L_c, z)
 
     beta_c_samples_arr = delta_c_samples_arr[:, :, :N*K]
     gamma_c_samples_arr = delta_c_samples_arr[:, :, N*K:]
 
     Sigma_c_samples = np.stack(
-        [invwishart.rvs(T, S_bar_sigma[c], size=n_samples) for c in range(C)], axis=1
+        [invwishart.rvs(T, S_bar_sigma[c], size=n_samples, random_state=rng) for c in range(C)], axis=1
     )
 
     return {
@@ -163,7 +172,7 @@ def sample_from_ssvi_i(results_ssvi_i, ssvi_i_pack, C, N, K, T, n_samples=10000)
     }
 
 
-def sample_from_ssvi_c(results_ssvi_c, ssvi_i_pack, C, N, K, T, n_samples=10000):
+def sample_from_ssvi_c(results_ssvi_c, ssvi_i_pack, C, N, K, T, n_samples=10000, rng=None):
     """Reconstruct posterior samples from the SSVI-C variational approximation.
 
     Parameters
@@ -193,6 +202,10 @@ def sample_from_ssvi_c(results_ssvi_c, ssvi_i_pack, C, N, K, T, n_samples=10000)
         Number of time periods.
     n_samples : int, optional
         Number of posterior samples to draw. Default is 10000.
+    rng : int, numpy.random.SeedSequence, numpy.random.Generator, or None, optional
+        Source of randomness for the reconstructed posterior samples
+        (including the lambda-KDE resampling). If None (default), a fresh,
+        non-reproducible generator is used.
 
     Returns
     -------
@@ -206,6 +219,7 @@ def sample_from_ssvi_c(results_ssvi_c, ssvi_i_pack, C, N, K, T, n_samples=10000)
         (C, size_deltac)), and 'Sigma_c' (list of length n_samples of
         numpy.ndarray of shape (C, N, N)).
     """
+    rng = np.random.default_rng(rng)
     q_lambda_chain, S_bar_sigma, cov_deltac = results_ssvi_c.values()
     mu_sigma_inv = [T * np.linalg.inv(S_bar_sigma[c]) for c in range(C)]
     Y, F, FF, idx_deltac, size_deltac, Pc, Lambda_inv, Lambda_inv_sum = ssvi_i_pack.values()
@@ -213,7 +227,7 @@ def sample_from_ssvi_c(results_ssvi_c, ssvi_i_pack, C, N, K, T, n_samples=10000)
     # lambda: sample from a KDE fit to the converged ULA chain (log-space, since lambda > 0)
     lam_chain = np.asarray(q_lambda_chain)
     kde_lam = gaussian_kde(np.log(lam_chain))
-    lam_samples = np.exp(kde_lam.resample(n_samples).flatten())
+    lam_samples = np.exp(kde_lam.resample(n_samples, seed=rng).flatten())
 
     # V_deltac(lambda), computed once and reused for both beta0 and delta_c
     V_deltac = calc_V_deltac2(lam_samples, mu_sigma_inv, FF, Lambda_inv, size_deltac, Pc, C, N, K)
@@ -224,7 +238,7 @@ def sample_from_ssvi_c(results_ssvi_c, ssvi_i_pack, C, N, K, T, n_samples=10000)
 
     size_beta0 = mu_beta0.shape[-1]
     L_beta0 = np.linalg.cholesky(V_beta0)
-    z_beta0 = np.random.normal(size=(n_samples, size_beta0))
+    z_beta0 = rng.normal(size=(n_samples, size_beta0))
     beta_0_samples = mu_beta0 + np.einsum('nij,nj->ni', L_beta0, z_beta0)
 
     # delta_c | lambda, beta0
@@ -233,14 +247,14 @@ def sample_from_ssvi_c(results_ssvi_c, ssvi_i_pack, C, N, K, T, n_samples=10000)
     delta_c_samples_arr = np.empty((n_samples, C, size_deltac))
     for c in range(C):
         L_c = np.linalg.cholesky(V_deltac[c])
-        z = np.random.normal(size=(n_samples, size_deltac))
+        z = rng.normal(size=(n_samples, size_deltac))
         delta_c_samples_arr[:, c, :] = mu_deltac[c] + np.einsum('nij,nj->ni', L_c, z)
 
     beta_c_samples_arr = delta_c_samples_arr[:, :, :N*K]
     gamma_c_samples_arr = delta_c_samples_arr[:, :, N*K:]
 
     Sigma_c_samples = np.stack(
-        [invwishart.rvs(T, S_bar_sigma[c], size=n_samples) for c in range(C)], axis=1
+        [invwishart.rvs(T, S_bar_sigma[c], size=n_samples, random_state=rng) for c in range(C)], axis=1
     )
 
     return {
@@ -280,7 +294,7 @@ def compute_cov_true(results_gibbs, C):
 
 
 def extract_cov_mfvi_pipeline(results_mfvi, mfvi_pack, C):
-    """Per-country delta_c covariance block sliced out of MFVI's full V_delta.
+    """Per-country delta_c covariance block sliced out of MFVI's full V_delta (used within pipeline).
 
     Parameters
     ----------
@@ -327,7 +341,7 @@ def cov2corr(cov):
 
 def extract_cov_mfvi(V_delta, N, K, Z_width, C):
     """Slice per-country delta_c covariance blocks directly out of MFVI's full
-    V_delta, without needing the full `mfvi_pack`.
+    V_delta, without needing the full `mfvi_pack` (used outside of pipeline).
 
     Parameters
     ----------
@@ -395,8 +409,139 @@ def compute_uqf(cov_true, cov_est_list, C):
     """
     return [UQF(cov_true[c], cov_est_list[c]) for c in range(C)]
 
+def plot_uqf_boxplot(results_dict, methods=("mfvi", "ssvi_i", "ssvi_c")):
+    """Boxplot of UQF values, pooled across seeds, for each method.
 
-"""Accuracy Measure (Faes et al. 2011, ter Steege eq. 20) — vectorized + parallel"""
+    Parameters
+    ----------
+    results_dict : dict
+        Mapping from seed to a dict containing, for each entry in `methods`,
+        a sub-dict with key "uqf" (array_like of float, the per-country UQF
+        values for that seed and method).
+    methods : sequence of str, optional
+        Method names to include. Default is ("mfvi", "ssvi_i", "ssvi_c").
+
+    Returns
+    -------
+    None
+        Displays the matplotlib figure; nothing is returned.
+    """
+    seeds = list(results_dict.keys())
+    pooled = {method: np.concatenate([results_dict[seed][method]["uqf"] for seed in seeds]) for method in methods}
+
+    fig, ax = plt.subplots(figsize=(6, 5))
+    ax.boxplot([pooled[m] for m in methods], tick_labels=methods)
+    ax.set_ylabel("UQF")
+    ax.grid(axis='y', alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+
+"""Correlation Mean Absolute Error (MAE)"""
+
+def corr_mae_table(results, N, K, Z_width):
+    """Compute, per country, the mean absolute correlation error of each VI
+    method's delta_c correlation structure against Gibbs.
+
+    Parameters
+    ----------
+    results : dict
+        Single-seed results dict, with keys "C" (int), "mfvi" (dict with
+        "results" sub-dict containing "V_delta"), "ssvi_i" (dict with
+        "results" sub-dict containing "cov_deltac"), "ssvi_c" (dict with
+        "results" sub-dict containing "cov_deltac"), "cov_true" (list of
+        length C of numpy.ndarray, the reference covariance per country),
+        and "config" (object with attribute `country_names`, a sequence of
+        length C of str).
+    N : int
+        Number of endogenous variables.
+    K : int
+        Number of regressors per equation.
+    Z_width : int
+        Number of non-exchangeable regressors per equation.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Rows indexed by country name, columns ["MFVI", "SSVI-I", "SSVI-C"],
+        values the mean absolute correlation error vs Gibbs, rounded to 4
+        decimal places.
+    """
+    C = results["C"]
+    method_names = ["MFVI", "SSVI-I", "SSVI-C"]
+    V_delta = results["mfvi"]["results"]["V_delta"]
+    cov_mfvi = extract_cov_mfvi(V_delta, N, K, Z_width, C)
+    cov_ssvi_i = results["ssvi_i"]["results"]["cov_deltac"]
+    cov_ssvi_c = results["ssvi_c"]["results"]["cov_deltac"]
+    cov_true = results["cov_true"]
+    methods = {"MFVI": cov_mfvi, "SSVI-I": cov_ssvi_i, "SSVI-C": cov_ssvi_c}
+
+    country_names = results["config"].country_names
+    table = {name: [] for name in method_names}
+
+    for c in range(C):
+        corr_true = cov2corr(cov_true[c])
+        np.fill_diagonal(corr_true, np.nan)
+        for name, cov in methods.items():
+            corr_method = cov2corr(cov[c])
+            np.fill_diagonal(corr_method, np.nan)
+            diff = corr_method - corr_true
+            table[name].append(np.nanmean(np.abs(diff)))
+
+    return pd.DataFrame(table, index=country_names).round(4)
+
+def plot_corr_mae_boxplots(results_dict, N, K, Z_width):
+    """Boxplots of mean absolute delta_c correlation error vs Gibbs, pooled
+    across countries and seeds, for each VI method.
+
+    Parameters
+    ----------
+    results_dict : dict
+        Mapping from seed to a single-seed results dict (see
+        `corr_mae_table` for its required structure).
+    N : int
+        Number of endogenous variables.
+    K : int
+        Number of regressors per equation.
+    Z_width : int
+        Number of non-exchangeable regressors per equation.
+
+    Returns
+    -------
+    None
+        Displays the matplotlib figure; nothing is returned.
+    """
+    seeds = list(results_dict.keys())
+    method_names = ["MFVI", "SSVI-I", "SSVI-C"]
+    pooled = {name: [] for name in method_names}
+
+    for seed in seeds:
+        results = results_dict[seed]
+        C = results["C"]
+        V_delta = results["mfvi"]["results"]["V_delta"]
+        cov_mfvi = extract_cov_mfvi(V_delta, N, K, Z_width, C)
+        cov_ssvi_i = results["ssvi_i"]["results"]["cov_deltac"]
+        cov_ssvi_c = results["ssvi_c"]["results"]["cov_deltac"]
+        cov_true = results["cov_true"]
+        methods = {"MFVI": cov_mfvi, "SSVI-I": cov_ssvi_i, "SSVI-C": cov_ssvi_c}
+
+        for c in range(C):
+            corr_true = cov2corr(cov_true[c])
+            np.fill_diagonal(corr_true, np.nan)
+            for name, cov in methods.items():
+                corr_method = cov2corr(cov[c])
+                np.fill_diagonal(corr_method, np.nan)
+                diff = corr_method - corr_true
+                pooled[name].append(np.nanmean(np.abs(diff)))
+
+    fig, ax = plt.subplots(figsize=(6, 5))
+    ax.boxplot([pooled[name] for name in method_names], tick_labels=method_names)
+    ax.set_ylabel("Mean abs correlation error vs Gibbs")
+    ax.grid(axis='y', alpha=0.3)
+    fig.suptitle("δ_c correlation structure error (pooled across countries & seeds)", fontsize=14)
+    plt.tight_layout()
+    plt.show()
+
+"""Accuracy Measure (Faes et al. 2011)"""
 
 def faes_accuracy(vi_samples, gibbs_samples, positive_support=False, grid_size=500):
     """Compute the Faes et al. (2011) accuracy score between a VI method's
@@ -434,7 +579,7 @@ def faes_accuracy(vi_samples, gibbs_samples, positive_support=False, grid_size=5
     kde_q = gaussian_kde(vi_samples)
     kde_p = gaussian_kde(gibbs_samples)
 
-    # Bounds per paper: smallest/largest value across BOTH sample sets, no padding
+    # Bounds per paper: smallest/largest value across sample sets, no padding
     lo = min(vi_samples.min(), gibbs_samples.min())
     hi = max(vi_samples.max(), gibbs_samples.max())
     grid = np.linspace(lo, hi, grid_size)
@@ -528,13 +673,13 @@ def prepare_gibbs_faes_arrays(gibbs_samples):
         (T, C, N), the diagonal entries of Sigma_c), and 'lam' (array_like,
         shape (T,), passed through unchanged).
     """
-    beta_c_gibbs = np.array(gibbs_samples['beta_c'])          # (T, C, N*K)
-    gamma_c_gibbs = np.array(gibbs_samples['gamma_c'])        # (T, C, N*n_zc)
-    beta_0_gibbs = np.array(gibbs_samples['beta_0'])          # (T, N*K)
+    beta_c_gibbs = np.array(gibbs_samples['beta_c'])    
+    gamma_c_gibbs = np.array(gibbs_samples['gamma_c']) 
+    beta_0_gibbs = np.array(gibbs_samples['beta_0'])        
 
     # Sigma_c diagonals: extract diag once, vectorized, before parallel calls
-    Sigma_c_gibbs_full = np.array(gibbs_samples['Sigma_c'])   # (T, C, N, N)
-    Sigma_c_gibbs = np.diagonal(Sigma_c_gibbs_full, axis1=2, axis2=3)   # (T, C, N)
+    Sigma_c_gibbs_full = np.array(gibbs_samples['Sigma_c'])  
+    Sigma_c_gibbs = np.diagonal(Sigma_c_gibbs_full, axis1=2, axis2=3)
 
     return {
         'beta_c': beta_c_gibbs,
@@ -568,18 +713,19 @@ def compute_faes_scores(vi_samples, gibbs_arrays):
         (numpy.ndarray, shape (C, N)) — the Faes accuracy score for each
         parameter component.
     """
-    beta_c_vi = np.array(vi_samples['beta_c'])          # (T, C, N*K)
-    gamma_c_vi = np.array(vi_samples['gamma_c'])        # (T, C, N*n_zc)
-    beta_0_vi = np.array(vi_samples['beta_0'])          # (T, N*K)
+    beta_c_vi = np.array(vi_samples['beta_c'])         
+    gamma_c_vi = np.array(vi_samples['gamma_c'])    
+    beta_0_vi = np.array(vi_samples['beta_0']) 
 
     # Sigma_c diagonals: extract diag once, vectorized, before parallel calls
-    Sigma_c_vi_full = np.array(vi_samples['Sigma_c'])       # (T, C, N, N)
-    Sigma_c_vi = np.diagonal(Sigma_c_vi_full, axis1=2, axis2=3)       # (T, C, N)
+    Sigma_c_vi_full = np.array(vi_samples['Sigma_c'])      
+    Sigma_c_vi = np.diagonal(Sigma_c_vi_full, axis1=2, axis2=3)    
 
     scores = {}
     scores['beta_c'] = _faes_grid(beta_c_vi, gibbs_arrays['beta_c'])
     scores['gamma_c'] = _faes_grid(gamma_c_vi, gibbs_arrays['gamma_c'])
     scores['beta_0'] = _faes_vec(beta_0_vi, gibbs_arrays['beta_0'])
+    # positive support therefore log-space
     scores['lam'] = faes_accuracy(vi_samples['lam'], gibbs_arrays['lam'], positive_support=True)
     scores['Sigma_c'] = _faes_grid(Sigma_c_vi, gibbs_arrays['Sigma_c'], positive_support=True)
     return scores
@@ -660,6 +806,86 @@ def plot_accuracy_boxplots(results_faes, method_name, C):
             ax.grid(axis='y', alpha=0.3)
 
     fig.suptitle(f'Faes et al. Accuracy: {method_name} vs Gibbs', fontsize=14)
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_accuracy_boxplots_pooled(results_dict, method_name, method_key):
+    """Same layout as `plot_accuracy_boxplots`, but pooled across all seeds in
+    results_dict.
+
+    Parameters
+    ----------
+    results_dict : dict
+        Mapping from seed to a per-seed results dict, each containing key
+        "C" (int) and `method_key` (dict with key "faes", the output of
+        `compute_faes_scores`).
+    method_name : str
+        Label for the VI method, used in the figure title.
+    method_key : str
+        Key into each seed's results dict identifying this method's results.
+
+    Returns
+    -------
+    None
+        Displays the matplotlib figure; nothing is returned.
+    """
+    seeds = list(results_dict.keys())
+    C = results_dict[seeds[0]]["C"]
+
+    faes_all = [results_dict[seed][method_key]["faes"] for seed in seeds]
+
+    beta_c_data = [np.concatenate([faes['beta_c'][c] for faes in faes_all]) for c in range(C)]
+    gamma_c_data = [np.concatenate([faes['gamma_c'][c] for faes in faes_all]) for c in range(C)]
+    sigma_c_data = [np.concatenate([faes['Sigma_c'][c] for faes in faes_all]) for c in range(C)]
+    beta_0_data = [np.concatenate([faes['beta_0'] for faes in faes_all])]
+    lam_data = [faes['lam'] for faes in faes_all]  # one value per seed
+
+    country_labels = [f'C{c+1}' for c in range(C)]
+    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+
+    axes[0, 0].boxplot(beta_c_data, labels=country_labels)
+    axes[0, 0].set_title(r'$\beta_c$')
+    axes[0, 0].set_ylabel('Accuracy (%)')
+
+    axes[0, 1].boxplot(gamma_c_data, labels=country_labels)
+    axes[0, 1].set_title(r'$\gamma_c$')
+    axes[0, 1].set_ylabel('Accuracy (%)')
+
+    axes[0, 2].boxplot(sigma_c_data, labels=country_labels)
+    axes[0, 2].set_title(r'$\Sigma_c$ diagonals')
+    axes[0, 2].set_ylabel('Accuracy (%)')
+
+    axes[1, 0].boxplot(beta_0_data, labels=[r'$\beta_0$'])
+    axes[1, 0].set_ylabel('Accuracy (%)')
+
+    # lambda: now has n_seeds values, use scatter (not boxplot, per earlier n=4 discussion)
+    axes[1, 1].scatter([1] * len(lam_data), lam_data, s=80, zorder=5, alpha=0.6)
+    axes[1, 1].set_xlim(0.5, 1.5)
+    axes[1, 1].set_xticks([1])
+    axes[1, 1].set_xticklabels([r'$\lambda$'])
+    axes[1, 1].set_ylabel('Accuracy (%)')
+
+    axes[1, 2].set_visible(False)
+
+    boxplot_axes_data = {
+        (0, 0): beta_c_data, (0, 1): gamma_c_data,
+        (0, 2): sigma_c_data, (1, 0): beta_0_data,
+    }
+    for (row, col), data in boxplot_axes_data.items():
+        ax = axes[row, col]
+        all_vals = np.concatenate([np.asarray(d) for d in data])
+        lo, hi = np.min(all_vals), np.max(all_vals)
+        pad = max((hi - lo) * 0.1, 1.0)
+        ax.set_ylim(max(0, lo - pad), min(100, hi + pad))
+
+    axes[1, 1].set_ylim(0, 100)
+
+    for ax in axes.flat:
+        if ax.get_visible():
+            ax.grid(axis='y', alpha=0.3)
+
+    fig.suptitle(f'Faes et al. Accuracy (pooled across {len(seeds)} seeds): {method_name} vs Gibbs', fontsize=14)
     plt.tight_layout()
     plt.show()
 
@@ -847,18 +1073,18 @@ def compute_irfs(beta_samples, sigma_samples, N, L, K, C, H=25,
             beta_c = beta_samples[d, c]
             Sigma_c = sigma_samples[d, c]
 
-            # --- reduced-form dynamics ---
+            # reduced-form dynamics
             A_list = _build_lag_matrices(beta_c, N, L, K)
             Acomp = _build_companion(A_list, N, L)
 
-            # --- structural impact matrix ---
+            # structural impact matrix
             G_c, tries = _draw_admissible_G(
                 Sigma_c, sign_pattern=sign_pattern, max_tries=max_tries, rng=rng
             )
             n_tries[d, c] = tries
             impact = G_c[:, shock_idx]           # period-0 response, length N
 
-            # --- propagate through companion form ---
+            # propagate through companion form
             Y = np.zeros(NL)
             Y[:N] = impact
             irfs[d, c, 0, :] = Y[:N]
@@ -1018,271 +1244,6 @@ def plot_wasserstein_grid_comparison(distances_dict, country_names, variable_nam
     plt.show()
 
 
-def plot_accuracy_boxplots_pooled(results_dict, method_name, method_key):
-    """Same layout as `plot_accuracy_boxplots`, but pooled across all seeds in
-    results_dict.
-
-    Parameters
-    ----------
-    results_dict : dict
-        Mapping from seed to a per-seed results dict, each containing key
-        "C" (int) and `method_key` (dict with key "faes", the output of
-        `compute_faes_scores`).
-    method_name : str
-        Label for the VI method, used in the figure title.
-    method_key : str
-        Key into each seed's results dict identifying this method's results.
-
-    Returns
-    -------
-    None
-        Displays the matplotlib figure; nothing is returned.
-    """
-    seeds = list(results_dict.keys())
-    C = results_dict[seeds[0]]["C"]
-
-    faes_all = [results_dict[seed][method_key]["faes"] for seed in seeds]
-
-    beta_c_data = [np.concatenate([faes['beta_c'][c] for faes in faes_all]) for c in range(C)]
-    gamma_c_data = [np.concatenate([faes['gamma_c'][c] for faes in faes_all]) for c in range(C)]
-    sigma_c_data = [np.concatenate([faes['Sigma_c'][c] for faes in faes_all]) for c in range(C)]
-    beta_0_data = [np.concatenate([faes['beta_0'] for faes in faes_all])]
-    lam_data = [faes['lam'] for faes in faes_all]  # one value per seed
-
-    country_labels = [f'C{c+1}' for c in range(C)]
-    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
-
-    axes[0, 0].boxplot(beta_c_data, labels=country_labels)
-    axes[0, 0].set_title(r'$\beta_c$')
-    axes[0, 0].set_ylabel('Accuracy (%)')
-
-    axes[0, 1].boxplot(gamma_c_data, labels=country_labels)
-    axes[0, 1].set_title(r'$\gamma_c$')
-    axes[0, 1].set_ylabel('Accuracy (%)')
-
-    axes[0, 2].boxplot(sigma_c_data, labels=country_labels)
-    axes[0, 2].set_title(r'$\Sigma_c$ diagonals')
-    axes[0, 2].set_ylabel('Accuracy (%)')
-
-    axes[1, 0].boxplot(beta_0_data, labels=[r'$\beta_0$'])
-    axes[1, 0].set_ylabel('Accuracy (%)')
-
-    # lambda: now has n_seeds values, use scatter (not boxplot, per earlier n=4 discussion)
-    axes[1, 1].scatter([1] * len(lam_data), lam_data, s=80, zorder=5, alpha=0.6)
-    axes[1, 1].set_xlim(0.5, 1.5)
-    axes[1, 1].set_xticks([1])
-    axes[1, 1].set_xticklabels([r'$\lambda$'])
-    axes[1, 1].set_ylabel('Accuracy (%)')
-
-    axes[1, 2].set_visible(False)
-
-    boxplot_axes_data = {
-        (0, 0): beta_c_data, (0, 1): gamma_c_data,
-        (0, 2): sigma_c_data, (1, 0): beta_0_data,
-    }
-    for (row, col), data in boxplot_axes_data.items():
-        ax = axes[row, col]
-        all_vals = np.concatenate([np.asarray(d) for d in data])
-        lo, hi = np.min(all_vals), np.max(all_vals)
-        pad = max((hi - lo) * 0.1, 1.0)
-        ax.set_ylim(max(0, lo - pad), min(100, hi + pad))
-
-    axes[1, 1].set_ylim(0, 100)
-
-    for ax in axes.flat:
-        if ax.get_visible():
-            ax.grid(axis='y', alpha=0.3)
-
-    fig.suptitle(f'Faes et al. Accuracy (pooled across {len(seeds)} seeds): {method_name} vs Gibbs', fontsize=14)
-    plt.tight_layout()
-    plt.show()
-
-def corr_mae_table(results, N, K, Z_width):
-    """Compute, per country, the mean absolute correlation error of each VI
-    method's delta_c correlation structure against Gibbs.
-
-    Parameters
-    ----------
-    results : dict
-        Single-seed results dict, with keys "C" (int), "mfvi" (dict with
-        "results" sub-dict containing "V_delta"), "ssvi_i" (dict with
-        "results" sub-dict containing "cov_deltac"), "ssvi_c" (dict with
-        "results" sub-dict containing "cov_deltac"), "cov_true" (list of
-        length C of numpy.ndarray, the reference covariance per country),
-        and "config" (object with attribute `country_names`, a sequence of
-        length C of str).
-    N : int
-        Number of endogenous variables.
-    K : int
-        Number of regressors per equation.
-    Z_width : int
-        Number of non-exchangeable regressors per equation.
-
-    Returns
-    -------
-    pandas.DataFrame
-        Rows indexed by country name, columns ["MFVI", "SSVI-I", "SSVI-C"],
-        values the mean absolute correlation error vs Gibbs, rounded to 4
-        decimal places.
-    """
-    C = results["C"]
-    method_names = ["MFVI", "SSVI-I", "SSVI-C"]
-    V_delta = results["mfvi"]["results"]["V_delta"]
-    cov_mfvi = extract_cov_mfvi(V_delta, N, K, Z_width, C)
-    cov_ssvi_i = results["ssvi_i"]["results"]["cov_deltac"]
-    cov_ssvi_c = results["ssvi_c"]["results"]["cov_deltac"]
-    cov_true = results["cov_true"]
-    methods = {"MFVI": cov_mfvi, "SSVI-I": cov_ssvi_i, "SSVI-C": cov_ssvi_c}
-
-    country_names = results["config"].country_names
-    table = {name: [] for name in method_names}
-
-    for c in range(C):
-        corr_true = cov2corr(cov_true[c])
-        np.fill_diagonal(corr_true, np.nan)
-        for name, cov in methods.items():
-            corr_method = cov2corr(cov[c])
-            np.fill_diagonal(corr_method, np.nan)
-            diff = corr_method - corr_true
-            table[name].append(np.nanmean(np.abs(diff)))
-
-    return pd.DataFrame(table, index=country_names).round(4)
-
-def plot_corr_mae_boxplots(results_dict, N, K, Z_width):
-    """Boxplots of mean absolute delta_c correlation error vs Gibbs, pooled
-    across countries and seeds, for each VI method.
-
-    Parameters
-    ----------
-    results_dict : dict
-        Mapping from seed to a single-seed results dict (see
-        `corr_mae_table` for its required structure).
-    N : int
-        Number of endogenous variables.
-    K : int
-        Number of regressors per equation.
-    Z_width : int
-        Number of non-exchangeable regressors per equation.
-
-    Returns
-    -------
-    None
-        Displays the matplotlib figure; nothing is returned.
-    """
-    seeds = list(results_dict.keys())
-    method_names = ["MFVI", "SSVI-I", "SSVI-C"]
-    pooled = {name: [] for name in method_names}
-
-    for seed in seeds:
-        results = results_dict[seed]
-        C = results["C"]
-        V_delta = results["mfvi"]["results"]["V_delta"]
-        cov_mfvi = extract_cov_mfvi(V_delta, N, K, Z_width, C)
-        cov_ssvi_i = results["ssvi_i"]["results"]["cov_deltac"]
-        cov_ssvi_c = results["ssvi_c"]["results"]["cov_deltac"]
-        cov_true = results["cov_true"]
-        methods = {"MFVI": cov_mfvi, "SSVI-I": cov_ssvi_i, "SSVI-C": cov_ssvi_c}
-
-        for c in range(C):
-            corr_true = cov2corr(cov_true[c])
-            np.fill_diagonal(corr_true, np.nan)
-            for name, cov in methods.items():
-                corr_method = cov2corr(cov[c])
-                np.fill_diagonal(corr_method, np.nan)
-                diff = corr_method - corr_true
-                pooled[name].append(np.nanmean(np.abs(diff)))
-
-    fig, ax = plt.subplots(figsize=(6, 5))
-    ax.boxplot([pooled[name] for name in method_names], tick_labels=method_names)
-    ax.set_ylabel("Mean abs correlation error vs Gibbs")
-    ax.grid(axis='y', alpha=0.3)
-    fig.suptitle("δ_c correlation structure error (pooled across countries & seeds)", fontsize=14)
-    plt.tight_layout()
-    plt.show()
-
-def plot_deltac_corr_diff_heatmaps(results, N, K, Z_width, seed):
-    """Plot, for each country, heatmaps of the delta_c correlation-matrix
-    difference (each VI method minus Gibbs).
-
-    Parameters
-    ----------
-    results : dict
-        Single-seed results dict (see `corr_mae_table` for its required
-        structure).
-    N : int
-        Number of endogenous variables.
-    K : int
-        Number of regressors per equation.
-    Z_width : int
-        Number of non-exchangeable regressors per equation.
-    seed : int or str
-        Seed identifier, used only in the figure title.
-
-    Returns
-    -------
-    None
-        Displays one matplotlib figure per country; nothing is returned.
-    """
-    C = results["C"]
-    country_names = results["config"].country_names
-
-    V_delta = results["mfvi"]["results"]["V_delta"]
-    cov_mfvi = extract_cov_mfvi(V_delta, N, K, Z_width, C)
-    cov_ssvi_i = results["ssvi_i"]["results"]["cov_deltac"]
-    cov_ssvi_c = results["ssvi_c"]["results"]["cov_deltac"]
-    cov_true = results["cov_true"]
-
-    methods = [("MFVI", cov_mfvi), ("SSVI-I", cov_ssvi_i), ("SSVI-C", cov_ssvi_c)]
-
-    for c in range(C):
-            corr_true = cov2corr(cov_true[c])
-            np.fill_diagonal(corr_true, np.nan)
-
-            diffs = []
-            for _, cov in methods:
-                corr_method = cov2corr(cov[c])
-                np.fill_diagonal(corr_method, np.nan)
-                diffs.append(corr_method - corr_true)
-
-            vmax = np.nanpercentile(np.abs(diffs), 98)
-
-            fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-
-            for ax, (label, _), diff in zip(axes, methods, diffs):
-                im = ax.imshow(diff, cmap="RdBu_r", vmin=-vmax, vmax=vmax)
-                ax.set_title(f"{label} − Gibbs")
-                fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-
-            fig.suptitle(f"δ_{{{country_names[c]}}} correlation error — seed {seed}", fontsize=14)
-            plt.tight_layout()
-            plt.show()
-
-def plot_uqf_boxplot(results_dict, methods=("mfvi", "ssvi_i", "ssvi_c")):
-    """Boxplot of UQF values, pooled across seeds, for each method.
-
-    Parameters
-    ----------
-    results_dict : dict
-        Mapping from seed to a dict containing, for each entry in `methods`,
-        a sub-dict with key "uqf" (array_like of float, the per-country UQF
-        values for that seed and method).
-    methods : sequence of str, optional
-        Method names to include. Default is ("mfvi", "ssvi_i", "ssvi_c").
-
-    Returns
-    -------
-    None
-        Displays the matplotlib figure; nothing is returned.
-    """
-    seeds = list(results_dict.keys())
-    pooled = {method: np.concatenate([results_dict[seed][method]["uqf"] for seed in seeds]) for method in methods}
-
-    fig, ax = plt.subplots(figsize=(6, 5))
-    ax.boxplot([pooled[m] for m in methods], tick_labels=methods)
-    ax.set_ylabel("UQF")
-    ax.grid(axis='y', alpha=0.3)
-    plt.tight_layout()
-    plt.show()
 
 def plot_conditional_mean_grid(methods, n_bins=10, title=None):
     """Plot, for several methods, the conditional mean of a coefficient given
@@ -1346,6 +1307,8 @@ def plot_conditional_mean_grid(methods, n_bins=10, title=None):
     fig.tight_layout(rect=[0, 0.06, 1, 0.94])
     return fig, axes
 
+"""Effect of lambda on coefficient means"""
+
 def plot_conditional_mean_by_seed(results_by_seed, k, n_bins=10):
     """For each seed, plot the conditional mean of `beta_c[:, :, k]` (and the
     matching `beta_0[k]`) given lambda, for every method, using
@@ -1400,6 +1363,8 @@ def plot_conditional_mean_by_seed(results_by_seed, k, n_bins=10):
         )
         figs[seed] = fig
     return figs
+
+"""Comparison to true parameters"""
 
 def coverage_table(results_by_seed, true_by_seed, param_key, methods,
                     levels=(0.5, 0.8, 0.95), axis_type="country"):
@@ -1520,6 +1485,8 @@ def plot_lambda_intervals(results_by_seed, true_by_seed, methods, levels=(0.5, 0
     ax.set_xlabel(r"$\lambda$ (log scale)")
     ax.legend()
     return ax
+
+"""Model Diagnostics"""
 
 def plot_diagnostics(ssvi_i_trace, ssvi_c_trace, ssvi_i_ess, ssvi_c_ess, rhat, title_suffix=""):
     """Plot ULA trace, ESS-across-iterations, and R-hat diagnostics for

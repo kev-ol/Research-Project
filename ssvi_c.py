@@ -1,6 +1,8 @@
 import numpy as np
 import arviz as az
 
+"""SSVI-C Update Functions"""
+
 def calc_V_beta02(lam, V_deltac, Lambda_inv, Lambda_inv_sum, C, N, K):
     """Compute the batched beta_0 covariance matrix, conditional on lambda samples.
 
@@ -28,11 +30,11 @@ def calc_V_beta02(lam, V_deltac, Lambda_inv, Lambda_inv_sum, C, N, K):
     """
     lam = np.atleast_1d(lam)
     n = len(lam)
-    inv_lam = (1/lam)[:, None, None]          # (n, 1, 1)
-    precision = np.tile(inv_lam * Lambda_inv_sum, (1, 1, 1)) if False else inv_lam * Lambda_inv_sum  # (n, size_beta0, size_beta0)
+    inv_lam = (1/lam)[:, None, None]
+    precision = np.tile(inv_lam * Lambda_inv_sum, (1, 1, 1)) if False else inv_lam * Lambda_inv_sum
     for c in range(C):
         precision = precision - inv_lam**2 * (Lambda_inv[c] @ V_deltac[c][:, :N*K, :N*K] @ Lambda_inv[c])
-    return np.linalg.inv(precision)            # (n, size_beta0, size_beta0)
+    return np.linalg.inv(precision)
 
 def calc_mu_beta02(lam, V_deltac, mu_sigma_inv, V_beta0, Y, F, Lambda_inv, Pc, C, N, K):
     """Compute the batched beta_0 posterior mean, conditional on lambda samples.
@@ -73,12 +75,13 @@ def calc_mu_beta02(lam, V_deltac, mu_sigma_inv, V_beta0, Y, F, Lambda_inv, Pc, C
     size_beta0 = V_beta0.shape[-1]
     total = np.zeros((n, size_beta0))
     for c in range(C):
-        term = Pc.T @ (F[c].T @ Y[c, :, :] @ mu_sigma_inv[c]).flatten(order='F')   # (size_deltac,)
-        term_batch = np.tile(term, (n, 1))                                          # (n, size_deltac)
+        # use (A kron B) vec(X) = vec(A X B.T)
+        term = Pc.T @ (F[c].T @ Y[c, :, :] @ mu_sigma_inv[c]).flatten(order='F')
+        term_batch = np.tile(term, (n, 1))
         # V_deltac[c][:, :N*K, :] has shape (n, N*K, size_deltac); apply to term_batch
-        proj = np.einsum('nij,nj->ni', V_deltac[c][:, :N*K, :], term_batch)         # (n, N*K)
+        proj = np.einsum('nij,nj->ni', V_deltac[c][:, :N*K, :], term_batch)
         total += (1/lam)[:, None] * np.einsum('ij,nj->ni', Lambda_inv[c], proj)
-    return np.einsum('nij,nj->ni', V_beta0, total)                                  # (n, size_beta0)
+    return np.einsum('nij,nj->ni', V_beta0, total)
 
 def calc_V_deltac2(lam, mu_sigma_inv, FF, Lambda_inv, size_deltac, Pc, C, N, K):
     """Compute the batched per-country delta_c covariance, conditional on lambda samples.
@@ -171,13 +174,14 @@ def calc_mu_deltac2(lam, beta0, V_deltac, mu_sigma_inv, Y, F, Lambda_inv, size_d
 
     mu_deltac = [np.zeros(shape=size_deltac)] * C
     for c in range(C):
+        # use (A kron B) vec(X) = vec(A X B.T)
         term = Pc.T @ (F[c].T @ Y[c, :, :] @ mu_sigma_inv[c]).flatten(order='F')
-        term_batch = np.tile(term, (n, 1))                                 # (n, size_deltac)
+        term_batch = np.tile(term, (n, 1))                         
 
         if batched_beta0:
-            beta_transformed = np.einsum('ij,nj->ni', Lambda_inv[c], beta0)  # (n, N*K), paired per-sample
+            beta_transformed = np.einsum('ij,nj->ni', Lambda_inv[c], beta0) 
         else:
-            beta_transformed = (Lambda_inv[c] @ beta0)[None, :]              # (1, N*K), broadcasts as before
+            beta_transformed = (Lambda_inv[c] @ beta0)[None, :]
 
         beta_term = (1.0/lam)[:, None] * beta_transformed
         term_batch[:, :N*K] += beta_term
@@ -245,7 +249,7 @@ def calc_D2(lam, mu_sigma_inv, Y, F, FF, Lambda_inv, Lambda_inv_sum, size_deltac
 
     return D
 
-def calc_q_lambda2(n_steps, s, lam_init, mu_sigma_inv, Y, F, FF, Lambda_inv, Lambda_inv_sum, size_deltac, Pc, C, N, K):
+def calc_q_lambda2(n_steps, s, lam_init, mu_sigma_inv, Y, F, FF, Lambda_inv, Lambda_inv_sum, size_deltac, Pc, C, N, K, rng):
     """Draw a chain of lambda samples via an unadjusted Langevin algorithm (ULA)
     with an RMSProp-style adaptive step size, sampling in log(lambda) space.
 
@@ -280,6 +284,8 @@ def calc_q_lambda2(n_steps, s, lam_init, mu_sigma_inv, Y, F, FF, Lambda_inv, Lam
         Number of endogenous variables.
     K : int
         Number of regressors per equation.
+    rng : numpy.random.Generator
+        Random number generator used to draw the ULA innovation at each step.
 
     Returns
     -------
@@ -290,8 +296,10 @@ def calc_q_lambda2(n_steps, s, lam_init, mu_sigma_inv, Y, F, FF, Lambda_inv, Lam
     """
     log_lams = np.zeros(n_steps)
     Ds = np.zeros((n_steps, C))
+    # initialise log-lambda and v
     l = np.log(lam_init)
     v = 0
+    # set decay=0.9
     beta = 0.9
     for n in range(n_steps):
         lam = np.exp(l)
@@ -304,11 +312,13 @@ def calc_q_lambda2(n_steps, s, lam_init, mu_sigma_inv, Y, F, FF, Lambda_inv, Lam
         step_size = s / (np.sqrt(v) + 1e-6)
         max_tries = 20
         for _ in range(max_tries):
-            l_new = l + step_size*score + np.sqrt(2*step_size)*np.random.normal()
+            l_new = l + step_size*score + np.sqrt(2*step_size)*rng.normal()
+            # clip log-lambda for numerical stability
             if -50 < l_new < 50:
                 break
         else:
-            l_new = np.clip(l_new, -50, 50)  # fallback if it never lands in range
+            # fallback if it never lands in range
+            l_new = np.clip(l_new, -50, 50)  
 
         l = l_new
     lams = np.exp(log_lams)
@@ -367,6 +377,7 @@ def calc_exp_lambda2(lams, mu_sigma_inv, Ds, Y, F, FF, Lambda_inv, Lambda_inv_su
     mu_lambda_inv_D : float
         Mean, over the samples, of sum_c D_c / lambda.
     """
+    # expectations for other updates
     lams = np.atleast_1d(lams)
     inv_lams = 1/lams
 
@@ -378,6 +389,7 @@ def calc_exp_lambda2(lams, mu_sigma_inv, Ds, Y, F, FF, Lambda_inv, Lambda_inv_su
     mu_bar_deltac = calc_mu_deltac2(lams, mu_beta0, V_deltac, mu_sigma_inv, Y, F, Lambda_inv, size_deltac, Pc, C, N, K)
     exp_mu_deltac = [mu_bar_deltac[c].mean(axis=0) for c in range(C)]
 
+    # calculating unconditional cov_deltac
     cov_term1 = [V_deltac[c].mean(axis=0) for c in range(C)]
     core = [Lambda_inv[c] @ V_beta0 @ Lambda_inv[c] for c in range(C)]
     cov_term2 = [(inv_lams[:, None, None]**2 * (V_deltac[c][:, :, :N*K] @ core[c] @ V_deltac[c][:, :N*K, :])).mean(axis=0)
@@ -385,16 +397,23 @@ def calc_exp_lambda2(lams, mu_sigma_inv, Ds, Y, F, FF, Lambda_inv, Lambda_inv_su
     cov_term3 = [np.cov(mu_bar_deltac[c], rowvar=False) for c in range(C)]
     cov_deltac = [cov_term1[c] + cov_term2[c] + cov_term3[c] for c in range(C)]
 
+    # term for ELBO
     log_lams = np.log(lams)
     mu_log_lambda = np.mean(log_lams)
 
+    # entropy for ELBO using Vasicek method
     sorted_log_lams = np.sort(log_lams)
     n = len(sorted_log_lams)
+    # window size, standard sqrt(n) choice for Vasicek's estimator
     m = int(np.sqrt(n))
+    # spacing between order statistics 2m apart
     diffs = sorted_log_lams[2*m:] - sorted_log_lams[:-2*m]
+    # guard against zero/negative spacing from ties or numerical error
     diffs = np.maximum(diffs, 1e-12)
+    # entropy estimate, adjusted for the u=log(lambda) transform (Jacobian)
     mu_log_q_lambda = -np.mean(np.log(n * diffs / (2*m))) - mu_log_lambda
 
+    # other terms for ELBO
     logdet_V_beta0 = np.linalg.slogdet(V_beta0)[1]
     exp_logdet_V_beta0 = logdet_V_beta0.mean(axis=0)
     logdet_V_deltac = [np.linalg.slogdet(V_deltac[c])[1] for c in range(C)]
@@ -492,7 +511,9 @@ def calc_ELBO2(exp_logdet_V_beta0, exp_logdet_V_deltac, S_bar_sigma, mu_log_lamb
     return elbo
 
 
-def run_ssvi_c(ssvi_i_pack, Z_width, C, N, K, T, n_steps=1000, s = 0.01, n_burnin = 100):
+"""SSVI-C Loop"""
+
+def run_ssvi_c(ssvi_i_pack, Z_width, C, N, K, T, n_steps=1000, s = 0.01, n_burnin = 100, rng=None):
     """Run the SSVI-C (semi-structured variational inference, correlated-lambda
     variant) coordinate-ascent loop until the ELBO converges.
 
@@ -523,6 +544,9 @@ def run_ssvi_c(ssvi_i_pack, Z_width, C, N, K, T, n_steps=1000, s = 0.01, n_burni
         Base ULA step-size scale. Default is 0.01.
     n_burnin : int, optional
         Number of initial ULA steps discarded per outer iteration. Default is 100.
+    rng : int, numpy.random.SeedSequence, numpy.random.Generator, or None, optional
+        Source of randomness for the Langevin (ULA) chain. If None (default),
+        a fresh, non-reproducible generator is used.
 
     Returns
     -------
@@ -539,6 +563,7 @@ def run_ssvi_c(ssvi_i_pack, Z_width, C, N, K, T, n_steps=1000, s = 0.01, n_burni
         log(lambda) chain samples recorded at each outer iteration.
     """
     Y, F, FF, idx_deltac, size_deltac, Pc, Lambda_inv, Lambda_inv_sum = ssvi_i_pack.values()
+    rng = np.random.default_rng(rng)
 
     # chosen initialisations
     lam_init = 1e-4
@@ -550,7 +575,7 @@ def run_ssvi_c(ssvi_i_pack, Z_width, C, N, K, T, n_steps=1000, s = 0.01, n_burni
     log_lams_history = []
 
     while len(ELBO) < 10 or np.mean([abs(ELBO[-i] - ELBO[-i-1]) for i in range(1, 4)]) > epsilon:
-        q_lambda, Ds = calc_q_lambda2(n_steps+n_burnin, s, lam_init, mu_sigma_inv, Y, F, FF, Lambda_inv, Lambda_inv_sum, size_deltac, Pc, C, N, K)
+        q_lambda, Ds = calc_q_lambda2(n_steps+n_burnin, s, lam_init, mu_sigma_inv, Y, F, FF, Lambda_inv, Lambda_inv_sum, size_deltac, Pc, C, N, K, rng)
         q_lambda = q_lambda[n_burnin:]
         Ds = Ds[n_burnin:]
         log_lams = np.log(q_lambda)
