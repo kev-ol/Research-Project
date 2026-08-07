@@ -56,7 +56,7 @@ def beta_0_sample(lam, Sigma_c_inv, gamma_c, y, X, XX, Z, Lambda_inv, Lambda_inv
     V_beta_0 = (V_beta_0 + V_beta_0.T) / 2
     r = [y[c] - np.kron(np.eye(N), Z) @ gamma_c[c] for c in range(C)]
     mu_beta_0 = V_beta_0 @ ((1/lam) * sum(Lambda_inv[c] @ P_inv[c] @ np.kron(Sigma_c_inv[c], X[c].T) @ r[c] for c in range(C)))
-    sample = rng.multivariate_normal(mu_beta_0, V_beta_0)
+    sample = rng.multivariate_normal(mu_beta_0, V_beta_0, method="cholesky")
     return sample, P_inv
 
 def lambda_sample(beta_c, beta_0, Lambda_inv, C, N, K, rng):
@@ -135,7 +135,7 @@ def beta_c_sample(lam, beta_0, Sigma_inv, gamma, V_beta_c, y_c, X_c, Z, Lambda_i
     # r_c removes the gamma contribution from y before computing mu
     r_c = y_c - np.kron(np.eye(N), Z) @ gamma
     mu_beta_c = V_beta_c@((1/lam)*Lambda_inv_c @ beta_0 + np.kron(Sigma_inv, X_c.T) @ r_c)
-    sample = rng.multivariate_normal(mu_beta_c, V_beta_c)
+    sample = rng.multivariate_normal(mu_beta_c, V_beta_c, method="cholesky")
     return sample
 
 def gamma_c_sample(Sigma_inv, beta, y_c, X_c, Z, ZZ, N, rng):
@@ -172,7 +172,7 @@ def gamma_c_sample(Sigma_inv, beta, y_c, X_c, Z, ZZ, N, rng):
     V_gamma_c = np.linalg.inv(np.kron(Sigma_inv, ZZ))
     r_c = y_c - np.kron(np.eye(N), X_c) @ beta
     mu_gamma_c = V_gamma_c@(np.kron(Sigma_inv, Z.T)) @ r_c
-    sample = rng.multivariate_normal(mu_gamma_c, V_gamma_c)
+    sample = rng.multivariate_normal(mu_gamma_c, V_gamma_c, method="cholesky")
     return sample
 
 def Sigma_c_sample(Beta_c, gamma_c, Y_c, X_c, Z, T, rng):
