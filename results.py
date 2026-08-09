@@ -811,8 +811,7 @@ def plot_accuracy_boxplots(results_faes, method_name, C):
 
 
 def plot_accuracy_boxplots_pooled(results_dict, method_name, method_key):
-    """Same layout as `plot_accuracy_boxplots`, but pooled across all seeds in
-    results_dict.
+    """Same layout as plot_accuracy_boxplots, but pooled across seeds
 
     Parameters
     ----------
@@ -859,7 +858,6 @@ def plot_accuracy_boxplots_pooled(results_dict, method_name, method_key):
     axes[1, 0].boxplot(beta_0_data, labels=[r'$\beta_0$'])
     axes[1, 0].set_ylabel('Accuracy (%)')
 
-    # lambda: now has n_seeds values, use scatter (not boxplot, per earlier n=4 discussion)
     axes[1, 1].scatter([1] * len(lam_data), lam_data, s=80, zorder=5, alpha=0.6)
     axes[1, 1].set_xlim(0.5, 1.5)
     axes[1, 1].set_xticks([1])
