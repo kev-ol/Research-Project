@@ -26,13 +26,15 @@ def plot_uqf_boxplot(results_dict, methods=("mfvi", "ssvi_i", "ssvi_c")):
     seeds = list(results_dict.keys())
     pooled = {method: np.concatenate([results_dict[seed][method]["uqf"] for seed in seeds]) for method in methods}
 
+    display_labels = [m.upper().replace("_", "-") for m in methods]
+
     fig, ax = plt.subplots(figsize=(6, 5))
-    ax.boxplot([pooled[m] for m in methods], tick_labels=methods)
-    ax.set_ylabel("UQF")
+    ax.boxplot([pooled[m] for m in methods], tick_labels=display_labels)
+    ax.set_ylabel("UQF", fontsize=18)
+    ax.tick_params(labelsize=18)
     ax.grid(axis='y', alpha=0.3)
     plt.tight_layout()
     plt.show()
-
 
 """Correlation Mean Absolute Error (MAE)"""
 
@@ -84,7 +86,6 @@ def plot_corr_mae_boxplots(results_dict, N, K, Z_width):
     ax.boxplot([pooled[name] for name in method_names], tick_labels=method_names)
     ax.set_ylabel("Mean abs correlation error vs Gibbs")
     ax.grid(axis='y', alpha=0.3)
-    fig.suptitle("δ_c correlation structure error (pooled across countries & seeds)", fontsize=14)
     plt.tight_layout()
     plt.show()
 
@@ -110,65 +111,59 @@ def plot_accuracy_boxplots(results_faes, method_name, C):
     """
     country_labels = [f'C{c+1}' for c in range(C)]
 
-    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+    fig, axes = plt.subplots(1, 5, figsize=(25, 6))
 
     # beta_c: one box per country
     beta_c_data = [results_faes['beta_c'][c] for c in range(C)]
-    axes[0, 0].boxplot(beta_c_data, labels=country_labels)
-    axes[0, 0].set_title(r'$\beta_c$')
-    axes[0, 0].set_ylabel('Accuracy (%)')
+    axes[0].boxplot(beta_c_data, labels=country_labels)
+    axes[0].set_title(r'$\beta_c$', fontsize=30)
+    axes[0].set_ylabel('Accuracy (%)', fontsize=22)
 
     # gamma_c: one box per country
     gamma_c_data = [results_faes['gamma_c'][c] for c in range(C)]
-    axes[0, 1].boxplot(gamma_c_data, labels=country_labels)
-    axes[0, 1].set_title(r'$\gamma_c$')
-    axes[0, 1].set_ylabel('Accuracy (%)')
+    axes[1].boxplot(gamma_c_data, labels=country_labels)
+    axes[1].set_title(r'$\gamma_c$', fontsize=30)
 
     # Sigma_c diagonals: one box per country
     sigma_c_data = [results_faes['Sigma_c'][c] for c in range(C)]
-    axes[0, 2].boxplot(sigma_c_data, labels=country_labels)
-    axes[0, 2].set_title(r'$\Sigma_c$ diagonals')
-    axes[0, 2].set_ylabel('Accuracy (%)')
+    axes[2].boxplot(sigma_c_data, labels=country_labels)
+    axes[2].set_title(r'$\Sigma_c$ diagonals', fontsize=30)
 
     # beta_0: single box over all N*K coefficients
     beta_0_data = [results_faes['beta_0']]
-    axes[1, 0].boxplot(beta_0_data, labels=[r'$\beta_0$'])
-    axes[1, 0].set_ylabel('Accuracy (%)')
+    axes[3].boxplot(beta_0_data)
+    axes[3].set_title(r'$\beta_0$', fontsize=30)
+    axes[3].set_xticks([])
 
     # lambda: single value, shown as a point
-    axes[1, 1].scatter([1], [results_faes['lam']], s=100, zorder=5)
-    axes[1, 1].set_xlim(0.5, 1.5)
-    axes[1, 1].set_xticks([1])
-    axes[1, 1].set_xticklabels([r'$\lambda$'])
-    axes[1, 1].set_ylabel('Accuracy (%)')
-
-    axes[1, 2].set_visible(False)
+    axes[4].scatter([1], [results_faes['lam']], s=250, zorder=5)
+    axes[4].set_xlim(0.5, 1.5)
+    axes[4].set_xticks([])
+    axes[4].set_title(r'$\lambda$', fontsize=30)
 
     # data-driven y-limits per subplot, except lambda (kept at full 0-100 range)
     boxplot_axes_data = {
-        (0, 0): beta_c_data,
-        (0, 1): gamma_c_data,
-        (0, 2): sigma_c_data,
-        (1, 0): beta_0_data,
+        0: beta_c_data,
+        1: gamma_c_data,
+        2: sigma_c_data,
+        3: beta_0_data,
     }
 
-    for (row, col), data in boxplot_axes_data.items():
-        ax = axes[row, col]
+    for idx, data in boxplot_axes_data.items():
+        ax = axes[idx]
         all_vals = np.concatenate([np.asarray(d) for d in data])
         lo, hi = np.min(all_vals), np.max(all_vals)
         pad = max((hi - lo) * 0.1, 1.0)
         ax.set_ylim(max(0, lo - pad), min(100, hi + pad))
 
-    axes[1, 1].set_ylim(0, 100)  # lambda: keep full range
+    axes[4].set_ylim(0, 100)  # lambda: keep full range
 
     for ax in axes.flat:
-        if ax.get_visible():
-            ax.grid(axis='y', alpha=0.3)
+        ax.grid(axis='y', alpha=0.3)
+        ax.tick_params(labelsize=20)
 
-    fig.suptitle(f'Faes et al. Accuracy: {method_name} vs Gibbs', fontsize=14)
     plt.tight_layout()
     plt.show()
-
 
 def plot_accuracy_boxplots_pooled(results_dict, method_name, method_key):
     """Same layout as plot_accuracy_boxplots, but pooled across seeds
@@ -244,6 +239,45 @@ def plot_accuracy_boxplots_pooled(results_dict, method_name, method_key):
             ax.grid(axis='y', alpha=0.3)
 
     fig.suptitle(f'Faes et al. Accuracy (pooled across {len(seeds)} seeds): {method_name} vs Gibbs', fontsize=14)
+    plt.tight_layout()
+    plt.show()
+
+def plot_lambda_accuracy_pooled(results_dict, method_pairs=(("MFVI", "mfvi"), ("SSVI-I", "ssvi_i"), ("SSVI-C", "ssvi_c"))):
+    """Scatter of pooled lambda Faes accuracy, one column per VI method,
+    with one point per seed.
+
+    Parameters
+    ----------
+    results_dict : dict
+        Mapping from seed to a per-seed results dict, each containing, for
+        every key in `method_pairs`, a sub-dict with key "faes" (output of
+        `results.compute_faes_scores`).
+    method_pairs : sequence of (str, str), optional
+        (label, method_key) pairs identifying which methods to plot and in
+        what order. Default is (("MFVI", "mfvi"), ("SSVI-I", "ssvi_i"),
+        ("SSVI-C", "ssvi_c")).
+
+    Returns
+    -------
+    None
+        Displays the matplotlib figure; nothing is returned.
+    """
+    seeds = list(results_dict.keys())
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+
+    for i, (label, key) in enumerate(method_pairs, start=1):
+        lam_data = [results_dict[seed][key]["faes"]['lam'] for seed in seeds]
+        ax.scatter([i] * len(lam_data), lam_data, s=250, zorder=5, alpha=0.7)
+
+    ax.set_xlim(0.5, len(method_pairs) + 0.5)
+    ax.set_xticks(range(1, len(method_pairs) + 1))
+    ax.set_xticklabels([label for label, _ in method_pairs], fontsize=16)
+    ax.set_ylabel('Accuracy (%)', fontsize=18)
+    ax.set_ylim(0, 100)
+    ax.tick_params(labelsize=18)
+    ax.grid(axis='y', alpha=0.3)
+
     plt.tight_layout()
     plt.show()
 

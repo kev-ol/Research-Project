@@ -353,17 +353,20 @@ def plot_pipeline_results(results, N, K, Z_width):
     lam_ssvi_c = results["ssvi_c"]["samples"]["lam"]
     lam_gibbs = results["gibbs"]["results"]["lam"]
 
+    plt.rcParams.update({'font.size': 14})
+
     plt.figure(figsize=(8, 5))
-    plt.hist(lam_ssvi_i, bins=50, density=True, alpha=0.5, label='SSVI_I')
-    plt.hist(lam_ssvi_c, bins=50, density=True, alpha=0.5, label='SSVI_C')
-    plt.hist(lam_mfvi, bins=50, density=True, alpha=0.5, label='mfvi')
+    plt.hist(lam_ssvi_i, bins=50, density=True, alpha=0.5, label='SSVI-I')
+    plt.hist(lam_ssvi_c, bins=50, density=True, alpha=0.5, label='SSVI-C')
+    plt.hist(lam_mfvi, bins=50, density=True, alpha=0.5, label='MFVI')
     plt.hist(lam_gibbs, bins=50, density=True, alpha=0.5, label='Gibbs')
     # limit x-axis for readability
     plt.xlim(0, 0.0002)
-    plt.xlabel('lambda')
-    plt.ylabel('density')
-    plt.legend()
-    plt.title('SSVI-I vs MFVI vs Gibbs: posterior of lambda\n(mfvi peak truncated for visibility)')
+    plt.xlabel(r'$\lambda$', fontsize=16)
+    plt.ylabel('Density', fontsize=16)
+    plt.legend(fontsize=14)
+    plt.tick_params(labelsize=13)
+    plt.ticklabel_format(axis='x', style='sci', scilimits=(0, 0))
     plt.show()
 
     # print UQF table
@@ -425,6 +428,8 @@ def plot_pipeline_results_seed(results, true_params, N, K, Z_width, label=""):
     # plot pooled accuracy
     for method_label, key in method_pairs:
         plot_accuracy_boxplots_pooled(results, method_label, key)
+
+    plot_lambda_accuracy_pooled(results)
 
     # plot Wasserstein distances per seed
     wasserstein_labels = {"mfvi": "MFVI", "ssvi_i": "SSVI-I", "ssvi_c": "SSVI-C"}
