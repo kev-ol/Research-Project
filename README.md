@@ -21,7 +21,8 @@ mean-field VI (ter Steege, 2024) and a Gibbs sampler.
 - `gibbs.py` — Gibbs sampler (ground truth benchmark)
 - `ssvi_i.py`, `ssvi_c.py` — the two SSVI variants
 - `mfvi.py` — mean-field VI baseline
-- `results.py` — evaluation metrics and plotting
+- `results.py` — evaluation metrics (sample reconstruction, UQF, Faes accuracy, IRFs, coverage)
+- `figures.py` — plotting functions for the above
 - `simulate.py` — synthetic data generation for the simulation study
 - `data_prep.py` — real-data loading and preprocessing
 - `Jarocinski Data/` — replication data accompanying Jarociński (2010)

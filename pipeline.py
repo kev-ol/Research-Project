@@ -11,6 +11,7 @@ from ssvi_c import run_ssvi_c
 from gibbs import run_gibbs
 from data_prep import prep_data
 from results import *
+from figures import *
 
 @dataclass
 class PipelineConfig:
