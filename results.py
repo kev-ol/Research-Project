@@ -1241,7 +1241,200 @@ def plot_wasserstein_grid_comparison(distances_dict, country_names, variable_nam
     plt.tight_layout()
     plt.show()
 
+"""Effect of lambda on coefficient means"""
 
+def lambda_dispersion_change(lam, coef_c_k, beta0_k_samples, pct=0.2,
+                              clip_lo=None, clip_hi=None):
+    """Log-ratio of across-country dispersion about beta_0 between the top
+    and bottom pct of the lambda posterior, for one coefficient, plus the
+    same change normalised by the log-lambda range spanned (elasticity).
+
+    Parameters
+    ----------
+    lam : array_like, shape (n_samples,)
+    coef_c_k : array_like, shape (C, n_samples)
+        Samples of one coefficient, per country.
+    beta0_k_samples : array_like, shape (n_samples,)
+        Matching draws of beta_0 for this coefficient.
+    pct : float, optional
+        Fraction defining the low/high lambda tails, computed within the
+        (possibly clipped) lambda values. Default is 0.2.
+    clip_lo : float or None, optional
+        If given (together with clip_hi), restrict to lambda values in
+        [clip_lo, clip_hi] before binning (e.g. another method's own
+        range), instead of using this method's full posterior. Default
+        is None (no clipping).
+    clip_hi : float or None, optional
+        See clip_lo.
+
+    Returns
+    -------
+    delta_norm : float
+        log(Disp_high / Disp_low), or np.nan if either bin has zero
+        dispersion or no samples fall in the (clipped) range.
+    elasticity : float
+        delta_norm normalised by log(hi_cut / lo_cut), or np.nan under the
+        same conditions as delta_norm.
+    lo_cut : float
+        Lambda value at the pct quantile (within the clipped range, if
+        given).
+    hi_cut : float
+        Lambda value at the (1 - pct) quantile (within the clipped range,
+        if given).
+    n_used : int
+        Number of samples the bins were computed from (i.e. falling within
+        [clip_lo, clip_hi] if clipping, else the full sample count).
+    """
+    lam = np.asarray(lam)
+    beta0_k = np.asarray(beta0_k_samples)
+
+    if clip_lo is not None and clip_hi is not None:
+        in_range = (lam >= clip_lo) & (lam <= clip_hi)
+        lam = lam[in_range]
+        coef_c_k = coef_c_k[:, in_range]
+        beta0_k = beta0_k[in_range]
+
+    n_used = lam.size
+    if n_used == 0:
+        return np.nan, np.nan, np.nan, np.nan, n_used
+
+    lo_cut, hi_cut = np.quantile(lam, [pct, 1 - pct])
+
+    def disp(mask):
+        vals = coef_c_k[:, mask] - beta0_k[mask]
+        return np.sqrt(np.mean(vals ** 2))
+
+    disp_low = disp(lam <= lo_cut)
+    disp_high = disp(lam >= hi_cut)
+
+    if disp_low == 0 or disp_high == 0 or hi_cut == lo_cut:
+        return np.nan, np.nan, lo_cut, hi_cut, n_used
+
+    delta_norm = np.log(disp_high / disp_low)
+    elasticity = delta_norm / np.log(hi_cut / lo_cut)
+
+    return delta_norm, elasticity, lo_cut, hi_cut, n_used
+
+
+def dispersion_change_real_data(results, pct=0.2, clipped=False):
+    """For each method and each coefficient, compute the log-ratio of
+    across-country dispersion about beta_0 between the top and bottom pct
+    of the lambda posterior, plus the log-lambda-range-normalised version
+    (elasticity).
+
+    Parameters
+    ----------
+    results : dict
+        Mapping from method ("mfvi", "ssvi_i", "ssvi_c", "gibbs") to a
+        sub-dict (keyed "samples" for VI methods, "results" for "gibbs")
+        with keys "beta_c" (array_like, shape (n_samples, C, N*K)),
+        "beta_0" (array_like, shape (n_samples, N*K)), and "lam"
+        (array_like, shape (n_samples,)).
+    pct : float, optional
+        Fraction defining the low/high lambda tails. Default is 0.2.
+    clipped : bool, optional
+        If True, restrict every method's lambda values to the range of
+        MFVI's own lambda posterior before binning, so all methods are
+        compared over the same absolute lambda window. If False (default),
+        each method uses its own full posterior range.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per (method, k) with columns "delta_norm", "elasticity",
+        "lam_lo", "lam_hi", "lam_range", "n_used".
+    """
+    clip_lo, clip_hi = None, None
+    if clipped:
+        lam_mfvi = np.array(
+            results["mfvi"]["samples"]["lam"]
+        )
+        clip_lo, clip_hi = lam_mfvi.min(), lam_mfvi.max()
+
+    rows = []
+    for method in ["mfvi", "ssvi_i", "ssvi_c", "gibbs"]:
+        d = results[method]["samples" if method != "gibbs" else "results"]
+        beta_c = np.array(d["beta_c"])   # (n_samples, C, NK)
+        beta_0 = np.array(d["beta_0"])   # (n_samples, NK)
+        lam = np.array(d["lam"])
+
+        for k in range(beta_c.shape[2]):
+            coef_c_k = beta_c[:, :, k].T  # (C, n_samples)
+            delta, elast, lo_cut, hi_cut, n_used = lambda_dispersion_change(
+                lam, coef_c_k, beta_0[:, k], pct=pct,
+                clip_lo=clip_lo, clip_hi=clip_hi,
+            )
+            rows.append({
+                "method": method, "k": k, "delta_norm": delta,
+                "elasticity": elast, "lam_lo": lo_cut, "lam_hi": hi_cut,
+                "lam_range": hi_cut - lo_cut if np.isfinite(hi_cut) else np.nan,
+                "n_used": n_used,
+            })
+
+    return pd.DataFrame(rows)
+
+
+def dispersion_change_by_seed(results_by_seed, pct=0.2, clipped=False):
+    """As `dispersion_change_real_data`, applied per seed and combined into
+    one DataFrame with a "seed" column.
+
+    Parameters
+    ----------
+    results_by_seed : dict
+        Mapping from seed to a results dict of the structure expected by
+        `dispersion_change_real_data`.
+    pct : float, optional
+        Fraction defining the low/high lambda tails. Default is 0.2.
+    clipped : bool, optional
+        If True, restrict every method's lambda values to MFVI's own
+        lambda range (computed separately per seed) before binning.
+        Default is False.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per (seed, method, k) with columns "delta_norm",
+        "elasticity", "lam_lo", "lam_hi", "lam_range", "n_used".
+    """
+    dfs = []
+    for seed, results in results_by_seed.items():
+        df = dispersion_change_real_data(results, pct=pct, clipped=clipped)
+        df["seed"] = seed
+        dfs.append(df)
+    return pd.concat(dfs, ignore_index=True)
+
+
+def summarise_dispersion_change(df, group_cols=("method",)):
+    """Summary stats of delta_norm and elasticity, with lambda range
+    reported only when each group corresponds to a single seed (i.e.
+    "seed" is in group_cols, or there is a single seed / no seed column at
+    all). When pooling across seeds, lambda ranges are on different scales
+    per seed and are omitted entirely.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Output of `dispersion_change_real_data` or `dispersion_change_by_seed`.
+    group_cols : sequence of str, optional
+        Columns to group by. Default is ("method",).
+
+    Returns
+    -------
+    pandas.DataFrame
+        count, mean, std, median, min, max of delta_norm and elasticity,
+        plus lam_lo, lam_hi, lam_range when applicable, per group.
+    """
+    clean = df.dropna(subset=["delta_norm", "elasticity"])
+    stats = clean.groupby(list(group_cols))[["delta_norm", "elasticity"]].agg(
+        ["count", "mean", "std", "median", "min", "max"]
+    )
+
+    per_seed = "seed" in group_cols or "seed" not in clean.columns
+    if per_seed:
+        lam_stats = clean.groupby(list(group_cols))[["lam_lo", "lam_hi", "lam_range"]].mean()
+        return stats.join(lam_stats)
+
+    return stats
 
 def plot_conditional_mean_grid(methods, n_bins=10, title=None):
     """Plot, for several methods, the conditional mean of a coefficient given
@@ -1304,8 +1497,6 @@ def plot_conditional_mean_grid(methods, n_bins=10, title=None):
     fig.legend(handles, labels, loc="lower center", ncol=len(labels), bbox_to_anchor=(0.5, 0.0))
     fig.tight_layout(rect=[0, 0.06, 1, 0.94])
     return fig, axes
-
-"""Effect of lambda on coefficient means"""
 
 def plot_conditional_mean_by_seed(results_by_seed, k, n_bins=10):
     """For each seed, plot the conditional mean of `beta_c[:, :, k]` (and the
