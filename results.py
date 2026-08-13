@@ -1245,9 +1245,10 @@ def plot_wasserstein_grid_comparison(distances_dict, country_names, variable_nam
 
 def lambda_dispersion_change(lam, coef_c_k, beta0_k_samples, pct=0.2,
                               clip_lo=None, clip_hi=None):
-    """Log-ratio of across-country dispersion about beta_0 between the top
-    and bottom pct of the lambda posterior, for one coefficient, plus the
-    same change normalised by the log-lambda range spanned (elasticity).
+    """Percentage change in across-country dispersion about beta_0 between
+    the top and bottom pct of the lambda posterior, for one coefficient,
+    plus the same change normalised by the relative lambda range spanned
+    (elasticity).
 
     Parameters
     ----------
@@ -1270,18 +1271,19 @@ def lambda_dispersion_change(lam, coef_c_k, beta0_k_samples, pct=0.2,
     Returns
     -------
     delta_norm : float
-        log(Disp_high / Disp_low), or np.nan if either bin has zero
-        dispersion or no samples fall in the (clipped) range.
+        (Disp_high - Disp_low) / Disp_low, or np.nan if Disp_low is zero
+        or no samples fall in the (clipped) range.
     elasticity : float
-        delta_norm normalised by log(hi_cut / lo_cut), or np.nan under the
-        same conditions as delta_norm.
+        delta_norm normalised by the relative lambda range,
+        (hi_cut - lo_cut) / lo_cut. np.nan under the same conditions as
+        delta_norm.
     lo_cut : float
         Lambda value at the pct quantile (within the clipped range, if
         given).
     hi_cut : float
         Lambda value at the (1 - pct) quantile (within the clipped range,
         if given).
-    n_used : int
+    n_samples : int
         Number of samples the bins were computed from (i.e. falling within
         [clip_lo, clip_hi] if clipping, else the full sample count).
     """
@@ -1294,9 +1296,9 @@ def lambda_dispersion_change(lam, coef_c_k, beta0_k_samples, pct=0.2,
         coef_c_k = coef_c_k[:, in_range]
         beta0_k = beta0_k[in_range]
 
-    n_used = lam.size
-    if n_used == 0:
-        return np.nan, np.nan, np.nan, np.nan, n_used
+    n_samples = lam.size
+    if n_samples == 0:
+        return np.nan, np.nan, np.nan, np.nan, n_samples
 
     lo_cut, hi_cut = np.quantile(lam, [pct, 1 - pct])
 
@@ -1307,19 +1309,19 @@ def lambda_dispersion_change(lam, coef_c_k, beta0_k_samples, pct=0.2,
     disp_low = disp(lam <= lo_cut)
     disp_high = disp(lam >= hi_cut)
 
-    if disp_low == 0 or disp_high == 0 or hi_cut == lo_cut:
-        return np.nan, np.nan, lo_cut, hi_cut, n_used
+    if disp_low == 0 or hi_cut == lo_cut:
+        return np.nan, np.nan, lo_cut, hi_cut, n_samples
 
-    delta_norm = np.log(disp_high / disp_low)
-    elasticity = delta_norm / np.log(hi_cut / lo_cut)
+    delta_norm = (disp_high - disp_low) / disp_low
+    elasticity = delta_norm / ((hi_cut - lo_cut) / lo_cut)
 
-    return delta_norm, elasticity, lo_cut, hi_cut, n_used
+    return delta_norm, elasticity, lo_cut, hi_cut, n_samples
 
 
 def dispersion_change_real_data(results, pct=0.2, clipped=False):
-    """For each method and each coefficient, compute the log-ratio of
-    across-country dispersion about beta_0 between the top and bottom pct
-    of the lambda posterior, plus the log-lambda-range-normalised version
+    """For each method and each coefficient, compute the percentage change
+    in across-country dispersion about beta_0 between the top and bottom
+    pct of the lambda posterior, plus the range-normalised version
     (elasticity).
 
     Parameters
@@ -1342,13 +1344,11 @@ def dispersion_change_real_data(results, pct=0.2, clipped=False):
     -------
     pandas.DataFrame
         One row per (method, k) with columns "delta_norm", "elasticity",
-        "lam_lo", "lam_hi", "lam_range", "n_used".
+        "lam_lo", "lam_hi", "lam_range", "n_samples".
     """
     clip_lo, clip_hi = None, None
     if clipped:
-        lam_mfvi = np.array(
-            results["mfvi"]["samples"]["lam"]
-        )
+        lam_mfvi = np.array(results["mfvi"]["samples"]["lam"])
         clip_lo, clip_hi = lam_mfvi.min(), lam_mfvi.max()
 
     rows = []
@@ -1360,7 +1360,7 @@ def dispersion_change_real_data(results, pct=0.2, clipped=False):
 
         for k in range(beta_c.shape[2]):
             coef_c_k = beta_c[:, :, k].T  # (C, n_samples)
-            delta, elast, lo_cut, hi_cut, n_used = lambda_dispersion_change(
+            delta, elast, lo_cut, hi_cut, n_samples = lambda_dispersion_change(
                 lam, coef_c_k, beta_0[:, k], pct=pct,
                 clip_lo=clip_lo, clip_hi=clip_hi,
             )
@@ -1368,7 +1368,7 @@ def dispersion_change_real_data(results, pct=0.2, clipped=False):
                 "method": method, "k": k, "delta_norm": delta,
                 "elasticity": elast, "lam_lo": lo_cut, "lam_hi": hi_cut,
                 "lam_range": hi_cut - lo_cut if np.isfinite(hi_cut) else np.nan,
-                "n_used": n_used,
+                "n_samples": n_samples,
             })
 
     return pd.DataFrame(rows)
@@ -1394,7 +1394,7 @@ def dispersion_change_by_seed(results_by_seed, pct=0.2, clipped=False):
     -------
     pandas.DataFrame
         One row per (seed, method, k) with columns "delta_norm",
-        "elasticity", "lam_lo", "lam_hi", "lam_range", "n_used".
+        "elasticity", "lam_lo", "lam_hi", "lam_range", "n_samples".
     """
     dfs = []
     for seed, results in results_by_seed.items():
@@ -1405,11 +1405,12 @@ def dispersion_change_by_seed(results_by_seed, pct=0.2, clipped=False):
 
 
 def summarise_dispersion_change(df, group_cols=("method",)):
-    """Summary stats of delta_norm and elasticity, with lambda range
-    reported only when each group corresponds to a single seed (i.e.
-    "seed" is in group_cols, or there is a single seed / no seed column at
-    all). When pooling across seeds, lambda ranges are on different scales
-    per seed and are omitted entirely.
+    """Mean and std of delta_norm and elasticity, plus mean n_samples,
+    with lambda range reported only when each group corresponds to a
+    single seed (i.e. "seed" is in group_cols, or there is a single seed
+    / no seed column at all). When pooling across seeds, lambda ranges
+    are on different scales per seed and are omitted entirely; n_samples
+    is still a genuine mean across seeds in that case.
 
     Parameters
     ----------
@@ -1421,15 +1422,23 @@ def summarise_dispersion_change(df, group_cols=("method",)):
     Returns
     -------
     pandas.DataFrame
-        count, mean, std, median, min, max of delta_norm and elasticity,
-        plus lam_lo, lam_hi, lam_range when applicable, per group.
+        mean and std of delta_norm and elasticity (columns named e.g.
+        "delta_norm_mean", "elasticity_std"), plus n_samples (per-seed
+        case, constant within group) or n_samples_mean (pooled-across-
+        seeds case, genuine mean), plus lam_lo, lam_hi, lam_range when
+        per-seed.
     """
     clean = df.dropna(subset=["delta_norm", "elasticity"])
     stats = clean.groupby(list(group_cols))[["delta_norm", "elasticity"]].agg(
-        ["count", "mean", "std", "median", "min", "max"]
+        ["mean", "std"]
     )
+    stats.columns = [f"{var}_{stat}" for var, stat in stats.columns]
 
     per_seed = "seed" in group_cols or "seed" not in clean.columns
+    n_col_name = "n_samples" if per_seed else "n_samples_mean"
+    n_stats = clean.groupby(list(group_cols))["n_samples"].mean().rename(n_col_name)
+    stats = stats.join(n_stats)
+
     if per_seed:
         lam_stats = clean.groupby(list(group_cols))[["lam_lo", "lam_hi", "lam_range"]].mean()
         return stats.join(lam_stats)
