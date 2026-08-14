@@ -341,7 +341,7 @@ def plot_pipeline_results(results, N, K, Z_width):
         )
 
     # plot wasserstein distances for IRFs
-    wasserstein_labels = {"mfvi": "mfvi", "ssvi_i": "SSVI_I", "ssvi_c": "SSVI_C"}
+    wasserstein_labels = {"mfvi": "MFVI", "ssvi_i": "SSVI-I", "ssvi_c": "SSVI-C"}
     plot_wasserstein_grid_comparison(
         {wasserstein_labels[key]: results[key]["wasserstein"] for _, key in methods},
         config.country_names, config.variable_names
@@ -356,10 +356,10 @@ def plot_pipeline_results(results, N, K, Z_width):
     plt.rcParams.update({'font.size': 14})
 
     plt.figure(figsize=(8, 5))
-    plt.hist(lam_ssvi_i, bins=50, density=True, alpha=0.5, label='SSVI-I')
-    plt.hist(lam_ssvi_c, bins=50, density=True, alpha=0.5, label='SSVI-C')
-    plt.hist(lam_mfvi, bins=50, density=True, alpha=0.5, label='MFVI')
-    plt.hist(lam_gibbs, bins=50, density=True, alpha=0.5, label='Gibbs')
+    plt.hist(lam_mfvi, bins=50, density=True, alpha=0.5, label='MFVI', color=METHOD_COLOURS["mfvi"])
+    plt.hist(lam_ssvi_i, bins=50, density=True, alpha=0.5, label='SSVI-I', color=METHOD_COLOURS["ssvi_i"])
+    plt.hist(lam_ssvi_c, bins=50, density=True, alpha=0.5, label='SSVI-C', color=METHOD_COLOURS["ssvi_c"])
+    plt.hist(lam_gibbs, bins=50, density=True, alpha=0.5, label='Gibbs', color=METHOD_COLOURS["gibbs"])
     # limit x-axis for readability
     plt.xlim(0, 0.0002)
     plt.xlabel(r'$\lambda$', fontsize=16)
@@ -457,7 +457,6 @@ def plot_pipeline_results_seed(results, true_params, N, K, Z_width, label=""):
     display(coverage_beta0)
 
     ax = plot_lambda_intervals(results, true_params, methods)
-    ax.set_title(rf"Credible intervals for $\lambda$ vs. true value — {label}")
     plt.show()
 
     # plot diagnostics, per seed
