@@ -1091,6 +1091,68 @@ def summarise_dispersion_change(df, group_cols=("method",)):
 
     return stats
 
+"""Runtime and iteration counts"""
+
+def runtime_iteration_table(results):
+    """Wall-clock runtime and iteration count for each VI method. Gibbs is
+    excluded, since it has no ELBO trace and its iteration count
+    (`config.gibbs_kwargs["n_steps"]`) is fixed rather than convergence-
+    determined.
+
+    Parameters
+    ----------
+    results : dict
+        Single-seed results dict, as returned by `pipeline.run_pipeline`,
+        with keys "mfvi", "ssvi_i", "ssvi_c", each a sub-dict holding
+        "runtime" (float, wall-clock seconds) and "elbo" (list of float,
+        the ELBO trace, one entry per coordinate-ascent iteration).
+
+    Returns
+    -------
+    pandas.DataFrame
+        Rows indexed by method display name ("MFVI", "SSVI-I", "SSVI-C"),
+        columns "runtime_s" (float, wall-clock seconds) and
+        "n_iterations" (int, length of the ELBO trace).
+    """
+    methods = [("MFVI", "mfvi"), ("SSVI-I", "ssvi_i"), ("SSVI-C", "ssvi_c")]
+    rows = [
+        {
+            "method": name,
+            "runtime_s": results[key]["runtime"],
+            "n_iterations": len(results[key]["elbo"]),
+        }
+        for name, key in methods
+    ]
+    return pd.DataFrame(rows).set_index("method")
+
+
+def runtime_table_seed(results_by_seed):
+    """Mean wall-clock runtime per method, averaged over seeds.
+
+    Parameters
+    ----------
+    results_by_seed : dict
+        Mapping from seed to a single-seed results dict (as returned by
+        `pipeline.run_pipeline`), each with keys "mfvi", "ssvi_i",
+        "ssvi_c", "gibbs", every one a sub-dict holding "runtime" (float,
+        wall-clock seconds).
+
+    Returns
+    -------
+    pandas.DataFrame
+        Rows indexed by method display name ("MFVI", "SSVI-I", "SSVI-C",
+        "Gibbs"), column "runtime_mean_s" (float, in seconds), computed
+        across seeds.
+    """
+    methods = [("MFVI", "mfvi"), ("SSVI-I", "ssvi_i"), ("SSVI-C", "ssvi_c"), ("Gibbs", "gibbs")]
+    rows = [
+        {"method": name, "runtime_s": results[key]["runtime"]}
+        for results in results_by_seed.values()
+        for name, key in methods
+    ]
+    stats = pd.DataFrame(rows).groupby("method")["runtime_s"].mean().rename("runtime_mean_s").to_frame()
+    return stats.loc[[name for name, _ in methods]]
+
 """Comparison to true parameters"""
 
 def coverage_table(results_by_seed, true_by_seed, param_key, methods,

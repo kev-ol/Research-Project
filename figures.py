@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.colors import to_rgba
 from results import extract_cov_mfvi, cov2corr
+from matplotlib.patches import Patch
 
 
 """Method colour/ordering convention, shared by every plot in this module.
@@ -92,8 +93,8 @@ def plot_uqf_boxplot(results_dict, methods=("mfvi", "ssvi_i", "ssvi_c")):
     fig, ax = plt.subplots(figsize=(6, 5))
     bp = ax.boxplot([pooled[m] for m in methods], tick_labels=display_labels, patch_artist=True, medianprops=MEDIAN_PROPS)
     _shade_boxes(bp, methods)
-    ax.set_ylabel("UQF", fontsize=18)
-    ax.tick_params(labelsize=18)
+    ax.set_ylabel("UQF", fontsize=22)
+    ax.tick_params(labelsize=25)
     ax.grid(axis='y', alpha=0.3)
     plt.tight_layout()
     plt.show()
@@ -148,8 +149,8 @@ def plot_corr_mae_boxplots(results_dict, N, K, Z_width):
     fig, ax = plt.subplots(figsize=(6, 5))
     bp = ax.boxplot([pooled[name] for name in method_names], tick_labels=method_names, patch_artist=True, medianprops=MEDIAN_PROPS)
     _shade_boxes(bp, method_keys)
-    ax.set_ylabel("MAE", fontsize=18)
-    ax.tick_params(labelsize=18)
+    ax.set_ylabel("MAE", fontsize=22)
+    ax.tick_params(labelsize=25)
     ax.grid(axis='y', alpha=0.3)
     plt.tight_layout()
     plt.show()
@@ -182,33 +183,33 @@ def plot_accuracy_boxplots(results_faes, method_name, C):
     beta_c_data = [results_faes['beta_c'][c] for c in range(C)]
     bp0 = axes[0].boxplot(beta_c_data, labels=country_labels, patch_artist=True, medianprops=MEDIAN_PROPS)
     _shade_all_boxes(bp0, color)
-    axes[0].set_title(r'$\beta_c$', fontsize=30)
-    axes[0].set_ylabel('Accuracy (%)', fontsize=22)
+    axes[0].set_title(r'$\beta_c$', fontsize=35)
+    axes[0].set_ylabel('Accuracy (%)', fontsize=25)
 
     # gamma_c: one box per country
     gamma_c_data = [results_faes['gamma_c'][c] for c in range(C)]
     bp1 = axes[1].boxplot(gamma_c_data, labels=country_labels, patch_artist=True, medianprops=MEDIAN_PROPS)
     _shade_all_boxes(bp1, color)
-    axes[1].set_title(r'$\gamma_c$', fontsize=30)
+    axes[1].set_title(r'$\gamma_c$', fontsize=35)
 
     # Sigma_c diagonals: one box per country
     sigma_c_data = [results_faes['Sigma_c'][c] for c in range(C)]
     bp2 = axes[2].boxplot(sigma_c_data, labels=country_labels, patch_artist=True, medianprops=MEDIAN_PROPS)
     _shade_all_boxes(bp2, color)
-    axes[2].set_title(r'$\Sigma_c$ diagonals', fontsize=30)
+    axes[2].set_title(r'$\Sigma_c$ diagonals', fontsize=35)
 
     # beta_0: single box over all N*K coefficients
     beta_0_data = [results_faes['beta_0']]
     bp3 = axes[3].boxplot(beta_0_data, patch_artist=True, medianprops=MEDIAN_PROPS)
     _shade_all_boxes(bp3, color)
-    axes[3].set_title(r'$\beta_0$', fontsize=30)
+    axes[3].set_title(r'$\beta_0$', fontsize=35)
     axes[3].set_xticks([])
 
     # lambda: single value, shown as a point
     axes[4].scatter([1], [results_faes['lam']], s=250, zorder=5, color=color, edgecolor="black", linewidth=0.6)
     axes[4].set_xlim(0.5, 1.5)
     axes[4].set_xticks([])
-    axes[4].set_title(r'$\lambda$', fontsize=30)
+    axes[4].set_title(r'$\lambda$', fontsize=35)
 
     # data-driven y-limits per subplot, except lambda (kept at full 0-100 range)
     boxplot_axes_data = {
@@ -229,7 +230,7 @@ def plot_accuracy_boxplots(results_faes, method_name, C):
 
     for ax in axes.flat:
         ax.grid(axis='y', alpha=0.3)
-        ax.tick_params(labelsize=20)
+        ax.tick_params(labelsize=25)
 
     plt.tight_layout()
     plt.show()
@@ -269,23 +270,23 @@ def plot_accuracy_boxplots_pooled(results_dict, method_name, method_key):
 
     bp0 = axes[0].boxplot(beta_c_data, patch_artist=True, medianprops=MEDIAN_PROPS)
     _shade_all_boxes(bp0, color)
-    axes[0].set_title(r'$\beta_c$', fontsize=30)
-    axes[0].set_ylabel('Accuracy (%)', fontsize=22)
+    axes[0].set_title(r'$\beta_c$', fontsize=35)
+    axes[0].set_ylabel('Accuracy (%)', fontsize=25)
     axes[0].set_xticks([])
 
     bp1 = axes[1].boxplot(gamma_c_data, patch_artist=True, medianprops=MEDIAN_PROPS)
     _shade_all_boxes(bp1, color)
-    axes[1].set_title(r'$\gamma_c$', fontsize=30)
+    axes[1].set_title(r'$\gamma_c$', fontsize=35)
     axes[1].set_xticks([])
 
     bp2 = axes[2].boxplot(sigma_c_data, patch_artist=True, medianprops=MEDIAN_PROPS)
     _shade_all_boxes(bp2, color)
-    axes[2].set_title(r'$\Sigma_c$ diagonals', fontsize=30)
+    axes[2].set_title(r'$\Sigma_c$ diagonals', fontsize=35)
     axes[2].set_xticks([])
 
     bp3 = axes[3].boxplot(beta_0_data, patch_artist=True, medianprops=MEDIAN_PROPS)
     _shade_all_boxes(bp3, color)
-    axes[3].set_title(r'$\beta_0$', fontsize=30)
+    axes[3].set_title(r'$\beta_0$', fontsize=35)
     axes[3].set_xticks([])
 
     boxplot_axes_data = {
@@ -304,7 +305,7 @@ def plot_accuracy_boxplots_pooled(results_dict, method_name, method_key):
 
     for ax in axes.flat:
         ax.grid(axis='y', alpha=0.3)
-        ax.tick_params(labelsize=20)
+        ax.tick_params(labelsize=25)
 
     fig.suptitle(f'Faes et al. Accuracy (pooled across {len(seeds)} seeds): {method_name} vs Gibbs', fontsize=18)
     plt.tight_layout()
@@ -346,7 +347,7 @@ def plot_lambda_accuracy_pooled(results_dict, method_pairs=(("MFVI", "mfvi"), ("
     ax.set_xticklabels([label for label, _ in method_pairs], fontsize=16)
     ax.set_ylabel('Accuracy (%)', fontsize=18)
     ax.set_ylim(0, 100)
-    ax.tick_params(labelsize=18)
+    ax.tick_params(labelsize=25)
     ax.grid(axis='y', alpha=0.3)
 
     plt.tight_layout()
@@ -403,24 +404,32 @@ def plot_irfs_comparison(gibbs_irfs, vi_irfs, country_names, variable_names, vi_
                 ax.fill_between(horizons, lo_band, hi_band,
                                  color="tab:blue", alpha=0.08)
 
-            ax.plot(horizons, gibbs_median[c, :, n], color="black", linewidth=1.2)
+            ax.plot(horizons, gibbs_median[c, :, n], color="black", linewidth=1.2, label="Gibbs (median)")
 
-            ax.plot(horizons, vi_median[c, :, n], color="red", linewidth=1.2)
-            ax.plot(horizons, vi_p5[c, :, n], color="red", linestyle="--", linewidth=1)
+            ax.plot(horizons, vi_median[c, :, n], color="red", linewidth=1.2, label=f"{vi_label} (median)")
+            ax.plot(horizons, vi_p5[c, :, n], color="red", linestyle="--", linewidth=1, label=f"{vi_label} (5/95%)")
             ax.plot(horizons, vi_p95[c, :, n], color="red", linestyle="--", linewidth=1)
 
             ax.axhline(0, color="gray", linewidth=0.7, linestyle=":")
 
             if n == 0:
-                ax.set_title(country_names[c])
+                ax.set_title(country_names[c], fontsize=20)
             if c == 0:
-                ax.set_ylabel(variable_names[n])
+                ax.set_ylabel(variable_names[n], fontsize=20)
             if n == N - 1:
-                ax.set_xlabel("Horizon")
-    fig.suptitle(f"Gibbs vs {vi_label}: Impulse Response Comparison", y=1.02)
-    plt.tight_layout()
-    plt.show()
+                ax.set_xlabel("Horizon", fontsize=15)
+            ax.tick_params(labelsize=15)
 
+    plt.tight_layout()
+    handles, labels = axes[0, 0].get_legend_handles_labels()
+    fanchart_patch = Patch(color="tab:blue", alpha=0.3)
+
+    ordered_handles = [fanchart_patch] + handles
+    ordered_labels = ["Gibbs (5-95% fanchart)"] + labels
+
+    fig.legend(ordered_handles, ordered_labels, loc="lower center", ncol=len(ordered_labels), fontsize=15,
+               bbox_to_anchor=(0.5, -0.05))
+    plt.show()
 
 def plot_wasserstein_grid_comparison(distances_dict, country_names, variable_names):
     """
@@ -457,21 +466,22 @@ def plot_wasserstein_grid_comparison(distances_dict, country_names, variable_nam
             ax = axes[n, c]
             for method in method_names:
                 ax.plot(horizons, distances_dict[method][c, :, n],
-                         color=_method_colour(method), linewidth=1.2, label=method)
+                         color=_method_colour(method), linewidth=2.2, label=method)
             ax.axhline(0, color="gray", linewidth=0.7, linestyle=":")
 
             if n == 0:
-                ax.set_title(country_names[c])
+                ax.set_title(country_names[c], fontsize=20)
             if c == 0:
-                ax.set_ylabel(variable_names[n])
+                ax.set_ylabel(variable_names[n], fontsize=20)
             if n == N - 1:
-                ax.set_xlabel("Horizon")
+                ax.set_xlabel("Horizon", fontsize=15)
+            ax.tick_params(labelsize=15)
 
-    axes[0, 0].legend(loc="upper right", fontsize=8)
-    fig.suptitle("Wasserstein distance: Gibbs vs VI methods", y=1.02)
     plt.tight_layout()
+    handles, labels = axes[0, 0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="lower center", ncol=len(labels), fontsize=15,
+               bbox_to_anchor=(0.5, -0.05))
     plt.show()
-
 
 """Effect of lambda on coefficient means"""
 
@@ -643,7 +653,7 @@ def plot_lambda_intervals(results_by_seed, true_by_seed, methods, levels=(0.5, 0
                         linewidth=linewidths[level], solid_capstyle="round",
                         label=METHOD_LABELS.get(method, method) if (s_idx == 0 and level == levels[0]) else None)
 
-            ax.scatter([true_val], [y], color="black", marker="x", s=60, zorder=5)
+            ax.scatter([true_val], [y], color="black", marker="x", s=100, zorder=5)
 
     ax.set_xscale("log")
     ax.set_yticks([s_idx * (n_methods + 1) + n_methods / 2 for s_idx in range(len(seeds))])

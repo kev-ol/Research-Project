@@ -35,7 +35,7 @@ class PipelineConfig:
         ``dict(n_steps=1000, s=0.1, n_burnin=100, epsilon=0.05)``.
     ssvi_c_kwargs : dict, optional
         Keyword arguments forwarded to `ssvi_c.run_ssvi_c`. Default is
-        ``dict(n_steps=1000, s=0.1, n_burnin=100)``.
+        ``dict(n_steps=1000, s=0.9, n_burnin=100)``.
     gibbs_kwargs : dict, optional
         Keyword arguments forwarded to `gibbs.run_gibbs`. Default is
         ``dict(n_chains=4, n_steps=10000, n_burnin=2000)``.
@@ -51,9 +51,10 @@ class PipelineConfig:
     sign_pattern: tuple = ((2, 2, 1.0), (3, 2, -1.0), (2, 3, 1.0), (3, 3, 1.0))
     # method hyperparameters
     ssvi_i_kwargs: dict = field(default_factory=lambda: dict(n_steps=1000, s=0.1, n_burnin=100, epsilon=0.05))
-    ssvi_c_kwargs: dict = field(default_factory=lambda: dict(n_steps=1000, s=0.1, n_burnin=100))
+    ssvi_c_kwargs: dict = field(default_factory=lambda: dict(n_steps=1000, s=0.9, n_burnin=100))
     gibbs_kwargs: dict = field(default_factory=lambda: dict(n_chains=4, n_steps=10000, n_burnin=2000))
     n_draws: int = 10000
+    n_samples: int = 32000
     H: int = 36
 
 
@@ -159,21 +160,21 @@ def run_pipeline(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2,
     # run mfvi and time it
     t0 = time.perf_counter()
     results_mfvi, ELBO_mfvi = run_mfvi(mfvi_pack, Z_width, C, N, K, T)
-    mfvi_samples = sample_from_mfvi(results_mfvi, mfvi_pack, C, N, K, T, rng=rng_mfvi)
+    mfvi_samples = sample_from_mfvi(results_mfvi, mfvi_pack, C, N, K, T, config.n_samples, rng=rng_mfvi)
     runtime_mfvi = time.perf_counter() - t0
     print(f"MFVI COMPLETE ({runtime_mfvi:.1f}s)")
 
     # run ssvi-i and time it
     t0 = time.perf_counter()
     results_ssvi_i, ELBO_ssvi_i, ess_i, log_lams_i = run_ssvi_i(ssvi_i_pack, Z_width, C, N, K, T, **config.ssvi_i_kwargs, rng=rng_ssvi_i)
-    ssvi_i_samples = sample_from_ssvi_i(results_ssvi_i, ssvi_i_pack, C, N, K, T, rng=rng_ssvi_i)
+    ssvi_i_samples = sample_from_ssvi_i(results_ssvi_i, ssvi_i_pack, C, N, K, T, config.n_samples, rng=rng_ssvi_i)
     runtime_ssvi_i = time.perf_counter() - t0
     print(f"SSVI-I COMPLETE ({runtime_ssvi_i:.1f}s)")
 
     # run ssvi-c and time it
     t0 = time.perf_counter()
     results_ssvi_c, ELBO_ssvi_c, ess_c, log_lams_c = run_ssvi_c(ssvi_i_pack, Z_width, C, N, K, T, **config.ssvi_c_kwargs, rng=rng_ssvi_c)
-    ssvi_c_samples = sample_from_ssvi_c(results_ssvi_c, ssvi_i_pack, C, N, K, T, rng=rng_ssvi_c)
+    ssvi_c_samples = sample_from_ssvi_c(results_ssvi_c, ssvi_i_pack, C, N, K, T, config.n_samples, rng=rng_ssvi_c)
     runtime_ssvi_c = time.perf_counter() - t0
     print(f"SSVI-C COMPLETE ({runtime_ssvi_c:.1f}s)")
 
@@ -304,9 +305,10 @@ def run_pipeline(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2,
     return results
 
 
-def plot_pipeline_results(results, N, K, Z_width):
+def plot_pipeline_results(results, N, K, Z_width, pct=0.25):
     """Produce every comparison plot (boxplots, IRFs, Wasserstein grid, UQF, MAE_corr)
-    for one run_pipeline result, ending with convergence diagnostics.
+    for one run_pipeline result, plus runtime/iteration-count and lambda
+    dispersion-change tables, ending with convergence diagnostics.
 
     Parameters
     ----------
@@ -318,6 +320,9 @@ def plot_pipeline_results(results, N, K, Z_width):
         Number of regressors per equation.
     Z_width : int
         Number of non-exchangeable regressors per equation.
+    pct : float, optional
+        Fraction defining the low/high lambda tails passed to
+        `results.dispersion_change_real_data`. Default is 0.25.
 
     Returns
     -------
@@ -362,10 +367,10 @@ def plot_pipeline_results(results, N, K, Z_width):
     plt.hist(lam_gibbs, bins=50, density=True, alpha=0.5, label='Gibbs', color=METHOD_COLOURS["gibbs"])
     # limit x-axis for readability
     plt.xlim(0, 0.0002)
-    plt.xlabel(r'$\lambda$', fontsize=16)
-    plt.ylabel('Density', fontsize=16)
-    plt.legend(fontsize=14)
-    plt.tick_params(labelsize=13)
+    plt.xlabel(r'$\lambda$', fontsize=20)
+    plt.ylabel('Density', fontsize=18)
+    plt.legend(fontsize=18)
+    plt.tick_params(labelsize=15)
     plt.ticklabel_format(axis='x', style='sci', scilimits=(0, 0))
     plt.show()
 
@@ -381,6 +386,19 @@ def plot_pipeline_results(results, N, K, Z_width):
     print("Correlation structure MAE:")
     display(corr_mae_table(results, N, K, Z_width))
 
+    # print runtime / iteration count table (VI methods only, Gibbs excluded)
+    print("Runtime and iteration counts:")
+    display(runtime_iteration_table(results))
+
+    # print lambda dispersion-change tables (own range, then clipped to MFVI's range)
+    delta_df = dispersion_change_real_data(results, pct=pct)
+    print("Dispersion change (lambda effect on beta_c dispersion about beta_0):")
+    display(summarise_dispersion_change(delta_df, group_cols=("method",)).round(4))
+
+    delta_df_clipped = dispersion_change_real_data(results, pct=pct, clipped=True)
+    print("Dispersion change (clipped to MFVI's lambda range):")
+    display(summarise_dispersion_change(delta_df_clipped, group_cols=("method",)).round(4))
+
     # algorithm diagnostics
     plot_diagnostics(
         results["ssvi_i"]["diagnostics"]["log_lam_history"][-1],
@@ -390,11 +408,11 @@ def plot_pipeline_results(results, N, K, Z_width):
         results["gibbs"]["diagnostics"]["rhat"],
     )
 
-def plot_pipeline_results_seed(results, true_params, N, K, Z_width, label=""):
+def plot_pipeline_results_seed(results, true_params, N, K, Z_width, label="", pct=0.25):
     """Produce every pooled-across-seeds comparison plot (accuracy, Wasserstein,
     correlation MAE, UQF, coverage tables, lambda intervals) for a set of
-    `run_pipeline` results keyed by seed, ending with per-seed convergence
-    diagnostics.
+    `run_pipeline` results keyed by seed, plus mean-runtime and lambda
+    dispersion-change tables, ending with per-seed convergence diagnostics.
 
     Parameters
     ----------
@@ -413,6 +431,9 @@ def plot_pipeline_results_seed(results, true_params, N, K, Z_width, label=""):
     label : str, optional
         Text included in printed headers and the lambda-interval plot
         title. Default is "".
+    pct : float, optional
+        Fraction defining the low/high lambda tails passed to
+        `results.dispersion_change_by_seed`. Default is 0.25.
 
     Returns
     -------
@@ -455,6 +476,20 @@ def plot_pipeline_results_seed(results, true_params, N, K, Z_width, label=""):
     coverage_beta0 = coverage_table(results, true_params, "beta_0", methods, axis_type="vector")
     print(f"beta_0 coverage ({label}):")
     display(coverage_beta0)
+
+    # print mean runtime per method, averaged over seeds
+    print(f"Mean runtime per method ({label}):")
+    display(runtime_table_seed(results))
+
+    # print lambda dispersion-change tables (own range, then clipped to MFVI's range)
+    delta_df = dispersion_change_by_seed(results, pct=pct)
+    print(f"Dispersion change (lambda effect on beta_c dispersion about beta_0) ({label}):")
+    display(summarise_dispersion_change(delta_df, group_cols=("method",)).round(4))
+    display(summarise_dispersion_change(delta_df, group_cols=("seed", "method")).round(4))
+
+    delta_df_clipped = dispersion_change_by_seed(results, pct=pct, clipped=True)
+    print(f"Dispersion change (clipped to MFVI's lambda range) ({label}):")
+    display(summarise_dispersion_change(delta_df_clipped, group_cols=("method",)).round(4))
 
     ax = plot_lambda_intervals(results, true_params, methods)
     plt.show()
