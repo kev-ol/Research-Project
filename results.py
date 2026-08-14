@@ -1050,7 +1050,7 @@ def dispersion_change_by_seed(results_by_seed, pct=0.2, clipped=False):
     return pd.concat(dfs, ignore_index=True)
 
 
-def summarise_dispersion_change(df, group_cols=("method",)):
+def summarise_dispersion_change(df, group_cols=("method",), decimals=4, lam_sci_decimals=2):
     """Mean and std of delta_norm and elasticity, plus mean n_samples,
     with lambda range reported only when each group corresponds to a
     single seed (i.e. "seed" is in group_cols, or there is a single seed
@@ -1058,12 +1058,23 @@ def summarise_dispersion_change(df, group_cols=("method",)):
     are on different scales per seed and are omitted entirely; n_samples
     is still a genuine mean across seeds in that case.
 
+    delta_norm/elasticity/n_samples are rounded to `decimals` places;
+    lam_lo, lam_hi, and lam_range are instead formatted as scientific-
+    notation strings, since lambda is on a scale (e.g. ~1e-4 or smaller)
+    that fixed-point rounding reduces to indistinguishable zeros.
+
     Parameters
     ----------
     df : pandas.DataFrame
         Output of `dispersion_change_real_data` or `dispersion_change_by_seed`.
     group_cols : sequence of str, optional
         Columns to group by. Default is ("method",).
+    decimals : int, optional
+        Decimal places for delta_norm/elasticity/n_samples columns.
+        Default is 4.
+    lam_sci_decimals : int, optional
+        Decimal places in the scientific-notation mantissa used for
+        lam_lo, lam_hi, and lam_range. Default is 2.
 
     Returns
     -------
@@ -1071,22 +1082,24 @@ def summarise_dispersion_change(df, group_cols=("method",)):
         mean and std of delta_norm and elasticity (columns named e.g.
         "delta_norm_mean", "elasticity_std"), plus n_samples (per-seed
         case, constant within group) or n_samples_mean (pooled-across-
-        seeds case, genuine mean), plus lam_lo, lam_hi, lam_range when
-        per-seed.
+        seeds case, genuine mean), plus lam_lo, lam_hi, lam_range (as
+        scientific-notation strings) when per-seed.
     """
     clean = df.dropna(subset=["delta_norm", "elasticity"])
     stats = clean.groupby(list(group_cols))[["delta_norm", "elasticity"]].agg(
         ["mean", "std"]
     )
     stats.columns = [f"{var}_{stat}" for var, stat in stats.columns]
+    stats = stats.round(decimals)
 
     per_seed = "seed" in group_cols or "seed" not in clean.columns
     n_col_name = "n_samples" if per_seed else "n_samples_mean"
-    n_stats = clean.groupby(list(group_cols))["n_samples"].mean().rename(n_col_name)
+    n_stats = clean.groupby(list(group_cols))["n_samples"].mean().round(decimals).rename(n_col_name)
     stats = stats.join(n_stats)
 
     if per_seed:
         lam_stats = clean.groupby(list(group_cols))[["lam_lo", "lam_hi", "lam_range"]].mean()
+        lam_stats = lam_stats.map(lambda x: f"{x:.{lam_sci_decimals}e}")
         return stats.join(lam_stats)
 
     return stats
@@ -1094,37 +1107,39 @@ def summarise_dispersion_change(df, group_cols=("method",)):
 """Runtime and iteration counts"""
 
 def runtime_iteration_table(results):
-    """Wall-clock runtime and iteration count for each VI method. Gibbs is
-    excluded, since it has no ELBO trace and its iteration count
-    (`config.gibbs_kwargs["n_steps"]`) is fixed rather than convergence-
-    determined.
+    """Wall-clock runtime and iteration count for each method. Gibbs is
+    included for runtime, but has no ELBO trace or convergence-determined
+    iteration count (its step count,
+    `config.gibbs_kwargs["n_steps"]`, is fixed rather than a stopping
+    criterion), so its iteration count is reported as NA.
 
     Parameters
     ----------
     results : dict
         Single-seed results dict, as returned by `pipeline.run_pipeline`,
-        with keys "mfvi", "ssvi_i", "ssvi_c", each a sub-dict holding
-        "runtime" (float, wall-clock seconds) and "elbo" (list of float,
-        the ELBO trace, one entry per coordinate-ascent iteration).
+        with keys "mfvi", "ssvi_i", "ssvi_c", "gibbs", each a sub-dict
+        holding "runtime" (float, wall-clock seconds); "mfvi", "ssvi_i",
+        and "ssvi_c" additionally hold "elbo" (list of float, the ELBO
+        trace, one entry per coordinate-ascent iteration).
 
     Returns
     -------
     pandas.DataFrame
-        Rows indexed by method display name ("MFVI", "SSVI-I", "SSVI-C"),
-        columns "runtime_s" (float, wall-clock seconds) and
-        "n_iterations" (int, length of the ELBO trace).
+        Rows indexed by method display name ("MFVI", "SSVI-I", "SSVI-C",
+        "Gibbs"), columns "runtime_s" (float, wall-clock seconds) and
+        "n_iterations" (float, length of the ELBO trace, or NaN for
+        Gibbs).
     """
-    methods = [("MFVI", "mfvi"), ("SSVI-I", "ssvi_i"), ("SSVI-C", "ssvi_c")]
+    methods = [("MFVI", "mfvi"), ("SSVI-I", "ssvi_i"), ("SSVI-C", "ssvi_c"), ("Gibbs", "gibbs")]
     rows = [
         {
             "method": name,
             "runtime_s": results[key]["runtime"],
-            "n_iterations": len(results[key]["elbo"]),
+            "n_iterations": len(results[key]["elbo"]) if key != "gibbs" else np.nan,
         }
         for name, key in methods
     ]
     return pd.DataFrame(rows).set_index("method")
-
 
 def runtime_table_seed(results_by_seed):
     """Mean wall-clock runtime per method, averaged over seeds.

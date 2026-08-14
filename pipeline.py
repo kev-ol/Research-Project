@@ -393,11 +393,11 @@ def plot_pipeline_results(results, N, K, Z_width, pct=0.25):
     # print lambda dispersion-change tables (own range, then clipped to MFVI's range)
     delta_df = dispersion_change_real_data(results, pct=pct)
     print("Dispersion change (lambda effect on beta_c dispersion about beta_0):")
-    display(summarise_dispersion_change(delta_df, group_cols=("method",)).round(4))
+    display(summarise_dispersion_change(delta_df, group_cols=("method",)))
 
     delta_df_clipped = dispersion_change_real_data(results, pct=pct, clipped=True)
     print("Dispersion change (clipped to MFVI's lambda range):")
-    display(summarise_dispersion_change(delta_df_clipped, group_cols=("method",)).round(4))
+    display(summarise_dispersion_change(delta_df_clipped, group_cols=("method",)))
 
     # algorithm diagnostics
     plot_diagnostics(
@@ -484,12 +484,12 @@ def plot_pipeline_results_seed(results, true_params, N, K, Z_width, label="", pc
     # print lambda dispersion-change tables (own range, then clipped to MFVI's range)
     delta_df = dispersion_change_by_seed(results, pct=pct)
     print(f"Dispersion change (lambda effect on beta_c dispersion about beta_0) ({label}):")
-    display(summarise_dispersion_change(delta_df, group_cols=("method",)).round(4))
-    display(summarise_dispersion_change(delta_df, group_cols=("seed", "method")).round(4))
+    display(summarise_dispersion_change(delta_df, group_cols=("method",)))
+    display(summarise_dispersion_change(delta_df, group_cols=("seed", "method")))
 
     delta_df_clipped = dispersion_change_by_seed(results, pct=pct, clipped=True)
     print(f"Dispersion change (clipped to MFVI's lambda range) ({label}):")
-    display(summarise_dispersion_change(delta_df_clipped, group_cols=("method",)).round(4))
+    display(summarise_dispersion_change(delta_df_clipped, group_cols=("method",)))
 
     ax = plot_lambda_intervals(results, true_params, methods)
     plt.show()
