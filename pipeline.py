@@ -399,6 +399,8 @@ def plot_pipeline_results(results, N, K, Z_width, pct=0.25):
     print("Dispersion change (clipped to MFVI's lambda range):")
     display(summarise_dispersion_change(delta_df_clipped, group_cols=("method",)))
 
+    plot_lambda_beta0_correlation_scatter(results['gibbs']['results'])
+
     # algorithm diagnostics
     plot_diagnostics(
         results["ssvi_i"]["diagnostics"]["log_lam_history"][-1],

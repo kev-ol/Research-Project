@@ -307,7 +307,6 @@ def plot_accuracy_boxplots_pooled(results_dict, method_name, method_key):
         ax.grid(axis='y', alpha=0.3)
         ax.tick_params(labelsize=25)
 
-    fig.suptitle(f'Faes et al. Accuracy (pooled across {len(seeds)} seeds): {method_name} vs Gibbs', fontsize=18)
     plt.tight_layout()
     plt.show()
 
@@ -345,7 +344,7 @@ def plot_lambda_accuracy_pooled(results_dict, method_pairs=(("MFVI", "mfvi"), ("
     ax.set_xlim(0.5, len(method_pairs) + 0.5)
     ax.set_xticks(range(1, len(method_pairs) + 1))
     ax.set_xticklabels([label for label, _ in method_pairs], fontsize=16)
-    ax.set_ylabel('Accuracy (%)', fontsize=18)
+    ax.set_ylabel('Accuracy (%)', fontsize=22)
     ax.set_ylim(0, 100)
     ax.tick_params(labelsize=25)
     ax.grid(axis='y', alpha=0.3)
@@ -731,3 +730,34 @@ def plot_diagnostics(ssvi_i_trace, ssvi_c_trace, ssvi_i_ess, ssvi_c_ess, rhat, t
 
     print(f"max R-hat: {rhat.max():.4f}, min R-hat: {rhat.min():.4f}, "
           f"# > 1.01: {(rhat > 1.01).sum()} / {len(rhat)}")
+
+"""lambda-beta0 Relationship"""
+
+def plot_lambda_beta0_correlation_scatter(gibbs_results):
+    """Scatter of Pearson correlations between lambda and each
+    component of beta_0, from Gibbs posterior draws.
+
+    Parameters
+    ----------
+    gibbs_results : dict
+        Gibbs `post_burnin_samples`, must contain "lam" (array_like,
+        shape (n_draws,)) and "beta_0" (array_like, shape
+        (n_draws, N*K)).
+
+    Returns
+    -------
+    None
+        Displays the matplotlib figure; nothing is returned.
+    """
+    lam = np.asarray(gibbs_results["lam"])
+    beta_0 = np.asarray(gibbs_results["beta_0"])
+    corrs = np.array([np.corrcoef(lam, beta_0[:, k])[0, 1] for k in range(beta_0.shape[1])])
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.scatter(range(len(corrs)), corrs, s=30, alpha=0.7)
+    ax.axhline(0, color="gray", linewidth=1, linestyle="--")
+    ax.set_xlabel(r"$\beta_0$ component index", fontsize=20)
+    ax.set_ylabel(r"Correlation with $\lambda$", fontsize=20)
+    ax.tick_params(labelsize=15)
+    plt.tight_layout()
+    plt.show()
