@@ -53,8 +53,7 @@ class PipelineConfig:
     ssvi_i_kwargs: dict = field(default_factory=lambda: dict(n_steps=1000, s=0.1, n_burnin=100, epsilon=0.05))
     ssvi_c_kwargs: dict = field(default_factory=lambda: dict(n_steps=1000, s=0.9, n_burnin=100))
     gibbs_kwargs: dict = field(default_factory=lambda: dict(n_chains=4, n_steps=10000, n_burnin=2000))
-    n_draws: int = 10000
-    n_samples: int = 32000
+    n_samples: int = 10000
     H: int = 36
 
 
@@ -111,12 +110,12 @@ def run_pipeline(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2,
     seed : int, numpy.random.SeedSequence, or None, optional
         Top-level seed controlling every stochastic stage of the pipeline
         (Gibbs sampling, the SSVI-I/SSVI-C Langevin chains, posterior-sample
-        reconstruction, IRF sign-rotation search, and IRF draw
-        subsampling). Independent child seeds are spawned from this value
-        for each stage, so the same `seed` reproduces the pipeline's full
-        output for identical inputs and `config`. If None (default), each
-        stage draws fresh, non-reproducible entropy. Note the on-disk cache
-        is keyed only by `config.name`, not by `seed` — reusing the same
+        reconstruction, Gibbs thinning, and IRF sign-rotation search).
+        Independent child seeds are spawned from this value for each
+        stage, so the same `seed` reproduces the pipeline's full output
+        for identical inputs and `config`. If None (default), each stage
+        draws fresh, non-reproducible entropy. Note the on-disk cache is
+        keyed only by `config.name`, not by `seed` — reusing the same
         `name` with a different `seed` returns the cached result unless
         `force_recompute=True`.
 
@@ -130,12 +129,13 @@ def run_pipeline(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2,
         with keys 'results', 'samples', 'uqf', 'faes', 'irfs',
         'wasserstein', 'runtime' (float, wall-clock seconds for that
         method's estimation step), and optionally 'elbo' and
-        'diagnostics'), 'gibbs' (dict with keys 'results', 'diagnostics',
-        'irfs', and 'runtime' (float)), and 'runtime_total' (float, the sum
-        of the four methods' runtimes). If a cache file already exists and
-        `force_recompute` is False, the cached dict is loaded and returned
-        directly instead of being recomputed (so `runtime`/`runtime_total`
-        reflect whenever it was originally computed, not the current call).
+        'diagnostics'), 'gibbs' (dict with keys 'results' (thinned to
+        `config.n_samples` draws), 'diagnostics', 'irfs', and 'runtime'
+        (float)), and 'runtime_total' (float, the sum of the four methods'
+        runtimes). If a cache file already exists and `force_recompute` is
+        False, the cached dict is loaded and returned directly instead of
+        being recomputed (so `runtime`/`runtime_total` reflect whenever it
+        was originally computed, not the current call).
     """
     cache_path = Path(cache_dir) / f"{config.name}.pkl"
     # return saved data if applicable
@@ -150,8 +150,8 @@ def run_pipeline(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2,
 
     # independent child seeds for every stochastic stage, spawned once from
     # the top-level seed so the whole run is reproducible given (data, config, seed)
-    (seed_mfvi, seed_ssvi_i, seed_ssvi_c, seed_gibbs, seed_subsample,
-     irf_seed_gibbs, irf_seed_mfvi, irf_seed_ssvi_i, irf_seed_ssvi_c) = np.random.SeedSequence(seed).spawn(9)
+    (seed_mfvi, seed_ssvi_i, seed_ssvi_c, seed_gibbs,
+     irf_seed_gibbs, irf_seed_mfvi, irf_seed_ssvi_i, irf_seed_ssvi_c) = np.random.SeedSequence(seed).spawn(8)
     rng_mfvi = np.random.default_rng(seed_mfvi)
     rng_ssvi_i = np.random.default_rng(seed_ssvi_i)
     rng_ssvi_c = np.random.default_rng(seed_ssvi_c)
@@ -184,6 +184,17 @@ def run_pipeline(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2,
     runtime_gibbs = time.perf_counter() - t0
     print(f"GIBBS COMPLETE ({runtime_gibbs:.1f}s)")
 
+    # thin gibbs draws to config.n_samples for a consistent sample size
+    # across all four methods. Every key except 'delta_c' is a numpy array;
+    # 'delta_c' is a plain list of lists (see gibbs.run_gibbs), so it needs
+    # list-style indexing instead of fancy indexing.
+    rng_thin = np.random.default_rng(seed_gibbs)
+    thin_idx = rng_thin.choice(len(results_gibbs["lam"]), size=config.n_samples, replace=False)
+    results_gibbs = {
+        key: val[thin_idx] if key != "delta_c" else [val[i] for i in thin_idx]
+        for key, val in results_gibbs.items()
+    }
+
     # extract delta_c covariances from gibbs and mfvi
     cov_true = compute_cov_true(results_gibbs, C)
     cov_mfvi = extract_cov_mfvi_pipeline(results_mfvi, mfvi_pack, C)
@@ -191,14 +202,9 @@ def run_pipeline(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2,
     # converting gibbs samples into arrays for accuracy metric
     gibbs_faes_arrays = prepare_gibbs_faes_arrays(results_gibbs)
 
-    rng = np.random.default_rng(seed_subsample)
-
-    beta_gibbs = np.array(results_gibbs["beta_c"])
-    sigma_gibbs = np.array(results_gibbs["Sigma_c"])
-    # select 10,000 sample points for Gibbs IRFs
-    idx_gibbs = rng.choice(beta_gibbs.shape[0], size=config.n_draws, replace=False)
+    # gibbs IRFs, using the full (already-thinned) sample set directly
     irfs_gibbs, _ = compute_irfs(
-        beta_gibbs[idx_gibbs], sigma_gibbs[idx_gibbs],
+        results_gibbs["beta_c"], results_gibbs["Sigma_c"],
         N=N, L=L, K=K, C=C, H=config.H, sign_pattern=config.sign_pattern, seed=irf_seed_gibbs,
     )
 
@@ -241,15 +247,14 @@ def run_pipeline(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2,
         dict
             Dictionary with keys 'results' (dict), 'samples' (dict), 'uqf'
             (list of length C of float), 'faes' (dict), 'irfs'
-            (numpy.ndarray, shape (n_draws, C, H+1, N)), and 'wasserstein'
+            (numpy.ndarray, shape (n_samples, C, H+1, N)), and 'wasserstein'
             (numpy.ndarray, shape (C, H+1, N)); plus 'elbo', 'diagnostics',
             and/or 'runtime' if the corresponding arguments were given.
         """
         beta = np.array(samples["beta_c"])
         sigma = np.array(samples["Sigma_c"])
-        idx = rng.choice(beta.shape[0], size=config.n_draws, replace=False)
         irfs_method, _ = compute_irfs(
-            beta[idx], sigma[idx], N=N, L=L, K=K, C=C,
+            beta, sigma, N=N, L=L, K=K, C=C,
             H=config.H, sign_pattern=config.sign_pattern, seed=seed,
         )
         d = dict(
