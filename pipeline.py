@@ -372,10 +372,10 @@ def plot_pipeline_results(results, N, K, Z_width, pct=0.25):
     plt.rcParams.update({'font.size': 14})
 
     plt.figure(figsize=(8, 5))
-    plt.hist(lam_mfvi, bins=200, density=True, alpha=0.5, label='MFVI', color=METHOD_COLOURS["mfvi"])
-    plt.hist(lam_ssvi_i, bins=200, density=True, alpha=0.5, label='SSVI-I', color=METHOD_COLOURS["ssvi_i"])
-    plt.hist(lam_ssvi_c, bins=200, density=True, alpha=0.5, label='SSVI-C', color=METHOD_COLOURS["ssvi_c"])
-    plt.hist(lam_gibbs, bins=200, density=True, alpha=0.5, label='Gibbs', color=METHOD_COLOURS["gibbs"])
+    plt.hist(lam_mfvi, bins=100, density=True, alpha=0.5, label='MFVI', color=METHOD_COLOURS["mfvi"])
+    plt.hist(lam_ssvi_i, bins=100, density=True, alpha=0.5, label='SSVI-I', color=METHOD_COLOURS["ssvi_i"])
+    plt.hist(lam_ssvi_c, bins=100, density=True, alpha=0.5, label='SSVI-C', color=METHOD_COLOURS["ssvi_c"])
+    plt.hist(lam_gibbs, bins=100, density=True, alpha=0.5, label='Gibbs', color=METHOD_COLOURS["gibbs"])
     # limit x-axis for readability
     plt.xlim(0, 0.0002)
     plt.xlabel(r'$\lambda$', fontsize=20)

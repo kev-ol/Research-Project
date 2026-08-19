@@ -462,7 +462,7 @@ def plot_irfs_comparison(gibbs_irfs, vi_irfs, country_names, variable_names, vi_
     ordered_handles = [fanchart_patch] + handles
     ordered_labels = ["Gibbs (5-95% fanchart)"] + labels
 
-    fig.legend(ordered_handles, ordered_labels, loc="lower center", ncol=len(ordered_labels), fontsize=15,
+    fig.legend(ordered_handles, ordered_labels, loc="lower center", ncol=len(ordered_labels), fontsize=20,
                bbox_to_anchor=(0.5, -0.05))
     _save_fig(fig, save_name)
     plt.show()
@@ -518,7 +518,7 @@ def plot_wasserstein_grid_comparison(distances_dict, country_names, variable_nam
 
     plt.tight_layout()
     handles, labels = axes[0, 0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="lower center", ncol=len(labels), fontsize=15,
+    fig.legend(handles, labels, loc="lower center", ncol=len(labels), fontsize=20,
                bbox_to_anchor=(0.5, -0.05))
     _save_fig(fig, save_name)
     plt.show()
@@ -802,7 +802,7 @@ def plot_lambda_beta0_correlation_scatter(gibbs_results, save_name=None):
     corrs = np.array([np.corrcoef(lam, beta_0[:, k])[0, 1] for k in range(beta_0.shape[1])])
 
     fig, ax = plt.subplots(figsize=(10, 6))
-    ax.scatter(range(len(corrs)), corrs, s=30, alpha=0.7)
+    ax.scatter(range(len(corrs)), corrs, s=50, alpha=0.8)
     ax.axhline(0, color="gray", linewidth=1, linestyle="--")
     ax.set_xlabel(r"$\beta_0$ component index", fontsize=20)
     ax.set_ylabel(r"Correlation with $\lambda$", fontsize=20)
