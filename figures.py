@@ -1,3 +1,4 @@
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -5,6 +6,18 @@ from matplotlib.lines import Line2D
 from matplotlib.colors import to_rgba
 from results import extract_cov_mfvi, cov2corr
 from matplotlib.patches import Patch
+
+
+FIGURES_DIR = Path("Figures")
+
+
+def _save_fig(fig, save_name):
+    """Save `fig` as a PDF to Figures/{save_name}.pdf (creating the folder
+    if needed). No-op if `save_name` is None."""
+    if save_name is None:
+        return
+    FIGURES_DIR.mkdir(exist_ok=True)
+    fig.savefig(FIGURES_DIR / f"{save_name}.pdf", bbox_inches="tight")
 
 
 """Method colour/ordering convention, shared by every plot in this module.
@@ -67,7 +80,7 @@ def _shade_all_boxes(bp, color, alpha=0.35):
 
 """UQF (Uncertainty Quantification Factor)"""
 
-def plot_uqf_boxplot(results_dict, methods=("mfvi", "ssvi_i", "ssvi_c")):
+def plot_uqf_boxplot(results_dict, methods=("mfvi", "ssvi_i", "ssvi_c"), save_name=None):
     """Boxplot of UQF values, pooled across seeds, for each method.
 
     Parameters
@@ -78,6 +91,9 @@ def plot_uqf_boxplot(results_dict, methods=("mfvi", "ssvi_i", "ssvi_c")):
         values for that seed and method).
     methods : sequence of str, optional
         Method names to include. Default is ("mfvi", "ssvi_i", "ssvi_c").
+    save_name : str or None, optional
+        If given, the figure is also saved as `Figures/{save_name}.pdf`
+        (the folder is created if needed). Default is None (no save).
 
     Returns
     -------
@@ -97,11 +113,12 @@ def plot_uqf_boxplot(results_dict, methods=("mfvi", "ssvi_i", "ssvi_c")):
     ax.tick_params(labelsize=25)
     ax.grid(axis='y', alpha=0.3)
     plt.tight_layout()
+    _save_fig(fig, save_name)
     plt.show()
 
 """Correlation Mean Absolute Error (MAE)"""
 
-def plot_corr_mae_boxplots(results_dict, N, K, Z_width):
+def plot_corr_mae_boxplots(results_dict, N, K, Z_width, save_name=None):
     """Boxplots of mean absolute delta_c correlation error vs Gibbs, pooled
     across countries and seeds, for each VI method.
 
@@ -116,6 +133,9 @@ def plot_corr_mae_boxplots(results_dict, N, K, Z_width):
         Number of regressors per equation.
     Z_width : int
         Number of non-exchangeable regressors per equation.
+    save_name : str or None, optional
+        If given, the figure is also saved as `Figures/{save_name}.pdf`
+        (the folder is created if needed). Default is None (no save).
 
     Returns
     -------
@@ -153,11 +173,12 @@ def plot_corr_mae_boxplots(results_dict, N, K, Z_width):
     ax.tick_params(labelsize=25)
     ax.grid(axis='y', alpha=0.3)
     plt.tight_layout()
+    _save_fig(fig, save_name)
     plt.show()
 
 """Accuracy Measure (Faes et al. 2011)"""
 
-def plot_accuracy_boxplots(results_faes, method_name, C):
+def plot_accuracy_boxplots(results_faes, method_name, C, save_name=None):
     """Boxplots of Faes accuracy per parameter block, for one VI method vs Gibbs.
 
     Parameters
@@ -168,6 +189,9 @@ def plot_accuracy_boxplots(results_faes, method_name, C):
         Label for the VI method, used in the figure title.
     C : int
         Number of countries.
+    save_name : str or None, optional
+        If given, the figure is also saved as `Figures/{save_name}.pdf`
+        (the folder is created if needed). Default is None (no save).
 
     Returns
     -------
@@ -233,9 +257,10 @@ def plot_accuracy_boxplots(results_faes, method_name, C):
         ax.tick_params(labelsize=25)
 
     plt.tight_layout()
+    _save_fig(fig, save_name)
     plt.show()
 
-def plot_accuracy_boxplots_pooled(results_dict, method_name, method_key):
+def plot_accuracy_boxplots_pooled(results_dict, method_name, method_key, save_name=None):
     """Same layout as plot_accuracy_boxplots, but pooled across seeds and countries.
 
     Parameters
@@ -248,6 +273,9 @@ def plot_accuracy_boxplots_pooled(results_dict, method_name, method_key):
         Label for the VI method, used in the figure title.
     method_key : str
         Key into each seed's results dict identifying this method's results.
+    save_name : str or None, optional
+        If given, the figure is also saved as `Figures/{save_name}.pdf`
+        (the folder is created if needed). Default is None (no save).
 
     Returns
     -------
@@ -308,9 +336,10 @@ def plot_accuracy_boxplots_pooled(results_dict, method_name, method_key):
         ax.tick_params(labelsize=25)
 
     plt.tight_layout()
+    _save_fig(fig, save_name)
     plt.show()
 
-def plot_lambda_accuracy_pooled(results_dict, method_pairs=(("MFVI", "mfvi"), ("SSVI-I", "ssvi_i"), ("SSVI-C", "ssvi_c"))):
+def plot_lambda_accuracy_pooled(results_dict, method_pairs=(("MFVI", "mfvi"), ("SSVI-I", "ssvi_i"), ("SSVI-C", "ssvi_c")), save_name=None):
     """Scatter of pooled lambda Faes accuracy, one column per VI method,
     with one point per seed.
 
@@ -324,6 +353,9 @@ def plot_lambda_accuracy_pooled(results_dict, method_pairs=(("MFVI", "mfvi"), ("
         (label, method_key) pairs identifying which methods to plot and in
         what order. Default is (("MFVI", "mfvi"), ("SSVI-I", "ssvi_i"),
         ("SSVI-C", "ssvi_c")).
+    save_name : str or None, optional
+        If given, the figure is also saved as `Figures/{save_name}.pdf`
+        (the folder is created if needed). Default is None (no save).
 
     Returns
     -------
@@ -350,12 +382,13 @@ def plot_lambda_accuracy_pooled(results_dict, method_pairs=(("MFVI", "mfvi"), ("
     ax.grid(axis='y', alpha=0.3)
 
     plt.tight_layout()
+    _save_fig(fig, save_name)
     plt.show()
 
 
 """Impulse Response Functions"""
 
-def plot_irfs_comparison(gibbs_irfs, vi_irfs, country_names, variable_names, vi_label="VI"):
+def plot_irfs_comparison(gibbs_irfs, vi_irfs, country_names, variable_names, vi_label="VI", save_name=None):
     """
     Plot a grid of impulse response comparisons between Gibbs and a VI method.
 
@@ -374,6 +407,9 @@ def plot_irfs_comparison(gibbs_irfs, vi_irfs, country_names, variable_names, vi_
         Variable labels, used as row y-labels.
     vi_label : str, optional
         Label for the VI method, used in the figure title. Default is "VI".
+    save_name : str or None, optional
+        If given, the figure is also saved as `Figures/{save_name}.pdf`
+        (the folder is created if needed). Default is None (no save).
 
     Returns
     -------
@@ -428,9 +464,10 @@ def plot_irfs_comparison(gibbs_irfs, vi_irfs, country_names, variable_names, vi_
 
     fig.legend(ordered_handles, ordered_labels, loc="lower center", ncol=len(ordered_labels), fontsize=15,
                bbox_to_anchor=(0.5, -0.05))
+    _save_fig(fig, save_name)
     plt.show()
 
-def plot_wasserstein_grid_comparison(distances_dict, country_names, variable_names):
+def plot_wasserstein_grid_comparison(distances_dict, country_names, variable_names, save_name=None):
     """
     Plot a grid comparison of Wasserstein-distance curves for multiple VI
     methods against Gibbs.
@@ -448,6 +485,9 @@ def plot_wasserstein_grid_comparison(distances_dict, country_names, variable_nam
         Country labels, used as column titles.
     variable_names : sequence of length N of str
         Variable labels, used as row y-labels.
+    save_name : str or None, optional
+        If given, the figure is also saved as `Figures/{save_name}.pdf`
+        (the folder is created if needed). Default is None (no save).
 
     Returns
     -------
@@ -480,6 +520,7 @@ def plot_wasserstein_grid_comparison(distances_dict, country_names, variable_nam
     handles, labels = axes[0, 0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="lower center", ncol=len(labels), fontsize=15,
                bbox_to_anchor=(0.5, -0.05))
+    _save_fig(fig, save_name)
     plt.show()
 
 """Effect of lambda on coefficient means"""
@@ -605,7 +646,7 @@ def plot_conditional_mean_by_seed(results_by_seed, k, n_bins=10):
 
 """Comparison to true parameters"""
 
-def plot_lambda_intervals(results_by_seed, true_by_seed, methods, levels=(0.5, 0.8, 0.95), ax=None):
+def plot_lambda_intervals(results_by_seed, true_by_seed, methods, levels=(0.5, 0.8, 0.95), ax=None, save_name=None):
     """Plot, per seed and method, credible intervals for lambda at several
     levels alongside the true simulating value.
 
@@ -624,6 +665,9 @@ def plot_lambda_intervals(results_by_seed, true_by_seed, methods, levels=(0.5, 0
         Central credible-interval levels to plot. Default is (0.5, 0.8, 0.95).
     ax : matplotlib.axes.Axes or None, optional
         Axes to draw on; a new figure and axes are created if None.
+    save_name : str or None, optional
+        If given, the figure is also saved as `Figures/{save_name}.pdf`
+        (the folder is created if needed). Default is None (no save).
 
     Returns
     -------
@@ -673,6 +717,7 @@ def plot_lambda_intervals(results_by_seed, true_by_seed, methods, levels=(0.5, 0
               loc="upper left", bbox_to_anchor=(1.02, 1.0), borderaxespad=0)
 
     ax.figure.tight_layout()
+    _save_fig(ax.figure, save_name)
     return ax
 
 """Model Diagnostics"""
@@ -733,7 +778,7 @@ def plot_diagnostics(ssvi_i_trace, ssvi_c_trace, ssvi_i_ess, ssvi_c_ess, rhat, t
 
 """lambda-beta0 Relationship"""
 
-def plot_lambda_beta0_correlation_scatter(gibbs_results):
+def plot_lambda_beta0_correlation_scatter(gibbs_results, save_name=None):
     """Scatter of Pearson correlations between lambda and each
     component of beta_0, from Gibbs posterior draws.
 
@@ -743,6 +788,9 @@ def plot_lambda_beta0_correlation_scatter(gibbs_results):
         Gibbs `post_burnin_samples`, must contain "lam" (array_like,
         shape (n_draws,)) and "beta_0" (array_like, shape
         (n_draws, N*K)).
+    save_name : str or None, optional
+        If given, the figure is also saved as `Figures/{save_name}.pdf`
+        (the folder is created if needed). Default is None (no save).
 
     Returns
     -------
@@ -760,4 +808,5 @@ def plot_lambda_beta0_correlation_scatter(gibbs_results):
     ax.set_ylabel(r"Correlation with $\lambda$", fontsize=20)
     ax.tick_params(labelsize=15)
     plt.tight_layout()
+    _save_fig(fig, save_name)
     plt.show()

@@ -12,6 +12,10 @@ from gibbs import run_gibbs
 from data_prep import prep_data
 from results import *
 from figures import *
+from figures import _save_fig  # not exported by `import *` (leading underscore)
+
+# filename slugs for each VI method, used when saving figures
+METHOD_SLUGS = {"mfvi": "mfvi", "ssvi_i": "ssvii", "ssvi_c": "ssvic"}
 
 @dataclass
 class PipelineConfig:
@@ -341,20 +345,22 @@ def plot_pipeline_results(results, N, K, Z_width, pct=0.25):
 
     # plot accuracy boxplots
     for label, key in methods:
-        plot_accuracy_boxplots(results[key]["faes"], label, C)
+        plot_accuracy_boxplots(results[key]["faes"], label, C, save_name=f"accuracy-real-{METHOD_SLUGS[key]}")
 
     # plot IRFs
     for label, key in methods:
         plot_irfs_comparison(
             results["gibbs"]["irfs"], results[key]["irfs"],
             config.country_names, config.variable_names, vi_label=label,
+            save_name=f"irf-real-{METHOD_SLUGS[key]}",
         )
 
     # plot wasserstein distances for IRFs
     wasserstein_labels = {"mfvi": "MFVI", "ssvi_i": "SSVI-I", "ssvi_c": "SSVI-C"}
     plot_wasserstein_grid_comparison(
         {wasserstein_labels[key]: results[key]["wasserstein"] for _, key in methods},
-        config.country_names, config.variable_names
+        config.country_names, config.variable_names,
+        save_name="wasser-real",
     )
 
     # plot lambda marginal distributions
@@ -377,6 +383,7 @@ def plot_pipeline_results(results, N, K, Z_width, pct=0.25):
     plt.legend(fontsize=18)
     plt.tick_params(labelsize=15)
     plt.ticklabel_format(axis='x', style='sci', scilimits=(0, 0))
+    _save_fig(plt.gcf(), "lam-distr")
     plt.show()
 
     # print UQF table
@@ -404,7 +411,7 @@ def plot_pipeline_results(results, N, K, Z_width, pct=0.25):
     print("Dispersion change (clipped to MFVI's lambda range):")
     display(summarise_dispersion_change(delta_df_clipped, group_cols=("method",)))
 
-    plot_lambda_beta0_correlation_scatter(results['gibbs']['results'])
+    plot_lambda_beta0_correlation_scatter(results['gibbs']['results'], save_name="beta0-lambda-corr")
 
     # algorithm diagnostics
     plot_diagnostics(
@@ -415,7 +422,7 @@ def plot_pipeline_results(results, N, K, Z_width, pct=0.25):
         results["gibbs"]["diagnostics"]["rhat"],
     )
 
-def plot_pipeline_results_seed(results, true_params, N, K, Z_width, label="", pct=0.25):
+def plot_pipeline_results_seed(results, true_params, N, K, Z_width, label="", scenario=None, pct=0.25):
     """Produce every pooled-across-seeds comparison plot (accuracy, Wasserstein,
     correlation MAE, UQF, coverage tables, lambda intervals) for a set of
     `run_pipeline` results keyed by seed, plus mean-runtime and lambda
@@ -438,6 +445,11 @@ def plot_pipeline_results_seed(results, true_params, N, K, Z_width, label="", pc
     label : str, optional
         Text included in printed headers and the lambda-interval plot
         title. Default is "".
+    scenario : str or None, optional
+        Short filename slug for this scenario (e.g. "lowT", "highT",
+        "lowC", "highC"), used to name the saved figure PDFs as
+        `Figures/{name}-{scenario}.pdf`. If None (default), figures are
+        displayed but not saved.
     pct : float, optional
         Fraction defining the low/high lambda tails passed to
         `results.dispersion_change_by_seed`. Default is 0.25.
@@ -455,9 +467,12 @@ def plot_pipeline_results_seed(results, true_params, N, K, Z_width, label="", pc
 
     # plot pooled accuracy
     for method_label, key in method_pairs:
-        plot_accuracy_boxplots_pooled(results, method_label, key)
+        plot_accuracy_boxplots_pooled(
+            results, method_label, key,
+            save_name=f"accuracy-{scenario}-{METHOD_SLUGS[key]}" if scenario else None,
+        )
 
-    plot_lambda_accuracy_pooled(results)
+    plot_lambda_accuracy_pooled(results, save_name=f"lam-accuracy-{scenario}" if scenario else None)
 
     # plot Wasserstein distances per seed
     wasserstein_labels = {"mfvi": "MFVI", "ssvi_i": "SSVI-I", "ssvi_c": "SSVI-C"}
@@ -468,8 +483,8 @@ def plot_pipeline_results_seed(results, true_params, N, K, Z_width, label="", pc
         )
 
     # plot pooled UQF and MAE boxplots
-    plot_corr_mae_boxplots(results, N, K, Z_width)
-    plot_uqf_boxplot(results)
+    plot_corr_mae_boxplots(results, N, K, Z_width, save_name=f"mae-{scenario}" if scenario else None)
+    plot_uqf_boxplot(results, save_name=f"uqf-{scenario}" if scenario else None)
 
     # coverage tables and barcharts for comparison to real truth
     coverage_betac = coverage_table(results, true_params, "beta_c", methods)
@@ -498,7 +513,10 @@ def plot_pipeline_results_seed(results, true_params, N, K, Z_width, label="", pc
     print(f"Dispersion change (clipped to MFVI's lambda range) ({label}):")
     display(summarise_dispersion_change(delta_df_clipped, group_cols=("method",)))
 
-    ax = plot_lambda_intervals(results, true_params, methods)
+    ax = plot_lambda_intervals(
+        results, true_params, methods,
+        save_name=f"lam-calib-{scenario}" if scenario else None,
+    )
     plt.show()
 
     # plot diagnostics, per seed
