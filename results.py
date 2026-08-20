@@ -1,3 +1,5 @@
+"""Evaluation metrics and posterior-sample reconstruction used to compare the inference methods against the Gibbs benchmark."""
+
 import numpy as np
 from scipy.stats import invgamma, invwishart, gaussian_kde, wasserstein_distance
 from scipy.linalg import eigh
@@ -44,10 +46,10 @@ def sample_from_mfvi(results_mfvi, mfvi_pack, C, N, K, T, n_samples=10000, rng=N
     gamma_c_samples = [deltas[:, idx_deltac[c] + N*K:idx_deltac[c] + size_deltac] for c in range(C)] 
     delta_c_samples = [deltas[:, idx_deltac[c]:idx_deltac[c] + size_deltac] for c in range(C)]    
 
-    # lambda samples (cheap, vectorize trivially)
+    # lambda samples
     lam_samples = invgamma.rvs(s_bar/2, scale=v_bar/2, size=n_samples, random_state=rng)
 
-    # Sigma_c samples (vectorized per country via scipy's size argument)
+    # Sigma_c samples (vectorized per country)
     Sigma_c_samples = [invwishart.rvs(T, S_bar_sigma[c], size=n_samples, random_state=rng) for c in range(C)]  
 
     return {
@@ -255,6 +257,7 @@ def corr_mae_table(results, N, K, Z_width):
 
     for c in range(C):
         corr_true = cov2corr(cov_true[c])
+        # remove diagonals
         np.fill_diagonal(corr_true, np.nan)
         for name, cov in methods.items():
             corr_method = cov2corr(cov[c])
@@ -273,6 +276,7 @@ def faes_accuracy(vi_samples, gibbs_samples, positive_support=False, grid_size=5
     vi_samples = np.asarray(vi_samples)
     gibbs_samples = np.asarray(gibbs_samples)
 
+    # log-space if applicable
     if positive_support:
         vi_samples = np.log(vi_samples)
         gibbs_samples = np.log(gibbs_samples)
@@ -280,7 +284,7 @@ def faes_accuracy(vi_samples, gibbs_samples, positive_support=False, grid_size=5
     kde_q = gaussian_kde(vi_samples)
     kde_p = gaussian_kde(gibbs_samples)
 
-    # Bounds per paper: smallest/largest value across sample sets, no padding
+    # Bounds: smallest/largest value across sample sets, no padding
     lo = min(vi_samples.min(), gibbs_samples.min())
     hi = max(vi_samples.max(), gibbs_samples.max())
     grid = np.linspace(lo, hi, grid_size)
@@ -323,7 +327,7 @@ def prepare_gibbs_faes_arrays(gibbs_samples):
     gamma_c_gibbs = np.array(gibbs_samples['gamma_c']) 
     beta_0_gibbs = np.array(gibbs_samples['beta_0'])        
 
-    # Sigma_c diagonals: extract diag once, vectorized, before parallel calls
+    # Sigma_c diagonals: extract once, vectorized, before parallel calls
     Sigma_c_gibbs_full = np.array(gibbs_samples['Sigma_c'])  
     Sigma_c_gibbs = np.diagonal(Sigma_c_gibbs_full, axis1=2, axis2=3)
 
@@ -343,7 +347,7 @@ def compute_faes_scores(vi_samples, gibbs_arrays):
     gamma_c_vi = np.array(vi_samples['gamma_c'])    
     beta_0_vi = np.array(vi_samples['beta_0']) 
 
-    # Sigma_c diagonals: extract diag once, vectorized, before parallel calls
+    # Sigma_c diagonals: extract once, vectorized, before parallel calls
     Sigma_c_vi_full = np.array(vi_samples['Sigma_c'])      
     Sigma_c_vi = np.diagonal(Sigma_c_vi_full, axis1=2, axis2=3)    
 
@@ -364,8 +368,9 @@ def _build_lag_matrices(beta_c, N, L, K):
     coefficient matrices."""
     A_list = [np.zeros((N, N)) for _ in range(L)]
     for i in range(N):
-        eq_block = beta_c[i * K: i * K + N * L]          # drop w_lags tail
-        eq_lags = eq_block.reshape(L, N)                  # [lag, variable]
+        # drop w_lags tail (only endogenous regressors relevant)
+        eq_block = beta_c[i * K: i * K + N * L]        
+        eq_lags = eq_block.reshape(L, N)               
         for l in range(L):
             A_list[l][i, :] = eq_lags[l, :]
     return A_list
@@ -375,9 +380,9 @@ def _build_companion(A_list, N, L):
     """Stack A_1..A_L into the top block row of the NL x NL companion matrix. """
     NL = N * L
     Acomp = np.zeros((NL, NL))
-    Acomp[:N, :] = np.hstack(A_list)          # [A_1 A_2 ... A_L]
+    Acomp[:N, :] = np.hstack(A_list)         
     if L > 1:
-        Acomp[N:, :NL - N] = np.eye(NL - N)   # shift-down identity blocks
+        Acomp[N:, :NL - N] = np.eye(NL - N)  
     return Acomp
 
 
@@ -392,6 +397,7 @@ def _draw_admissible_G(Sigma_c, sign_pattern, max_tries=1000, rng=None):
     P_c = np.linalg.cholesky(Sigma_c)
 
     for attempt in range(1, max_tries + 1):
+        # trigonometric identities for orthonormality
         theta = rng.uniform(0, 2 * np.pi)
         c, s = np.cos(theta), np.sin(theta)
         V = np.array([[c, -s],
@@ -402,6 +408,7 @@ def _draw_admissible_G(Sigma_c, sign_pattern, max_tries=1000, rng=None):
 
         G_c = P_c @ Q
 
+        # check sign requirements
         ok = all(G_c[row, col] * sgn > 0 for row, col, sgn in sign_pattern)
         if ok:
             return G_c, attempt
@@ -429,14 +436,15 @@ def compute_irfs(beta_samples, sigma_samples, N, L, K, C, H=36,
 
             # reduced-form dynamics
             A_list = _build_lag_matrices(beta_c, N, L, K)
-            Acomp = _build_companion(A_list, N, L)
+            # companion matrix stacks A_1,...,A_L into a VAR(1) for horizon-h propagation
+            Acomp = _build_companion(A_list, N, L)  
 
             # structural impact matrix
             G_c, tries = _draw_admissible_G(
                 Sigma_c, sign_pattern=sign_pattern, max_tries=max_tries, rng=rng
             )
             n_tries[d, c] = tries
-            impact = G_c[:, shock_idx]           # period-0 response, length N
+            impact = G_c[:, shock_idx] 
 
             # propagate through companion form
             Y = np.zeros(NL)
@@ -476,6 +484,7 @@ def lambda_dispersion_change(lam, coef_c_k, beta0_k_samples, pct=0.25,
     lam = np.asarray(lam)
     beta0_k = np.asarray(beta0_k_samples)
 
+    # clip lambda range if required
     if clip_lo is not None and clip_hi is not None:
         in_range = (lam >= clip_lo) & (lam <= clip_hi)
         lam = lam[in_range]
@@ -486,9 +495,11 @@ def lambda_dispersion_change(lam, coef_c_k, beta0_k_samples, pct=0.25,
     if n_samples == 0:
         return np.nan, np.nan, np.nan, np.nan, n_samples
 
+    # get cutoff poitns for upper andd lower batches
     lo_cut, hi_cut = np.quantile(lam, [pct, 1 - pct])
 
     def disp(mask):
+        """Gets RMSD from corresponding beta0 draw"""
         vals = coef_c_k[:, mask] - beta0_k[mask]
         return np.sqrt(np.mean(vals ** 2))
 
@@ -498,6 +509,7 @@ def lambda_dispersion_change(lam, coef_c_k, beta0_k_samples, pct=0.25,
     if disp_low == 0 or hi_cut == lo_cut:
         return np.nan, np.nan, lo_cut, hi_cut, n_samples
 
+    # calculate delta and elasticity
     delta_norm = (disp_high - disp_low) / disp_low
     elasticity = delta_norm / ((hi_cut - lo_cut) / lo_cut)
 
@@ -510,6 +522,7 @@ def dispersion_change_real_data(results, pct=0.25, clipped=False):
     pct of the lambda posterior, plus the range-normalised version
     (elasticity). Clipped=True means values clipped to MFVI posterior range."""
     clip_lo, clip_hi = None, None
+    # if clipped get MFVI range values
     if clipped:
         lam_mfvi = np.array(results["mfvi"]["samples"]["lam"])
         clip_lo, clip_hi = lam_mfvi.min(), lam_mfvi.max()
@@ -517,12 +530,12 @@ def dispersion_change_real_data(results, pct=0.25, clipped=False):
     rows = []
     for method in ["mfvi", "ssvi_i", "ssvi_c", "gibbs"]:
         d = results[method]["samples" if method != "gibbs" else "results"]
-        beta_c = np.array(d["beta_c"])   # (n_samples, C, NK)
-        beta_0 = np.array(d["beta_0"])   # (n_samples, NK)
+        beta_c = np.array(d["beta_c"])   
+        beta_0 = np.array(d["beta_0"])  
         lam = np.array(d["lam"])
 
         for k in range(beta_c.shape[2]):
-            coef_c_k = beta_c[:, :, k].T  # (C, n_samples)
+            coef_c_k = beta_c[:, :, k].T 
             delta, elast, lo_cut, hi_cut, n_samples = lambda_dispersion_change(
                 lam, coef_c_k, beta_0[:, k], pct=pct,
                 clip_lo=clip_lo, clip_hi=clip_hi,
@@ -544,6 +557,7 @@ def dispersion_change_by_seed(results_by_seed, pct=0.2, clipped=False):
     (elasticity), applied per seed and combined into
     one DataFrame with a "seed" column. Clipped=True means values clipped to MFVI posterior range."""
     dfs = []
+    # same process as real data for each seed but pooling results together
     for seed, results in results_by_seed.items():
         df = dispersion_change_real_data(results, pct=pct, clipped=clipped)
         df["seed"] = seed
@@ -557,6 +571,7 @@ def summarise_dispersion_change(df, group_cols=("method",), decimals=4, lam_sci_
     single seed.  When pooling across seeds, lambda ranges
     are on different scales per seed and are omitted entirely."""
     clean = df.dropna(subset=["delta_norm", "elasticity"])
+    # get mean and std
     stats = clean.groupby(list(group_cols))[["delta_norm", "elasticity"]].agg(
         ["mean", "std"]
     )

@@ -1,3 +1,5 @@
+"""Builds lagged design matrices and Minnesota-prior scale matrices from raw panel data for all four inference methods."""
+
 import numpy as np
 
 def prep_data(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2, Lambda = None):
@@ -67,7 +69,7 @@ def prep_data(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2, Lambda
             var_all = np.append(var_y, var_w)
             var_index = ([n for l in range(L) for n in range(N)] +
                     [N + j for l in range(len(L_w)) for j in range(N_w)])
-
+            # diagonal of ratios of variances
             diag = np.array([var_y[n] / var_all[var_index[k]]
                             for n in range(N) for k in range(K)])
             Lambda[c] = np.diag(diag)
@@ -95,13 +97,13 @@ def prep_data(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2, Lambda
     Pc = np.zeros((size_deltac, size_deltac))
 
     for n in range(N):
-        # beta_c's n-th block of K terms -> goes to positions n*(K+Z_width) .. n*(K+Z_width)+K-1
+        # beta_c's n-th block of K terms goes to positions n*(K+Z_width) .. n*(K+Z_width)+K-1
         for k in range(K):
             col_pos = n*K + k                      # position in delta_c's beta_c segment
             row_pos = n*(K + Z_width) + k          # position in the interleaved output
             Pc[row_pos, col_pos] = 1
 
-        # gamma_c's n-th block of Z_width terms -> goes to positions n*(K+Z_width)+K .. n*(K+Z_width)+K+Z_width-1
+        # gamma_c's n-th block of Z_width terms goes to positions n*(K+Z_width)+K .. n*(K+Z_width)+K+Z_width-1
         for z in range(Z_width):
             col_pos = N*K + n*Z_width + z          # position in delta_c's gamma_c segment (offset by N*K)
             row_pos = n*(K + Z_width) + K + z      # position in the interleaved output
@@ -112,7 +114,7 @@ def prep_data(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2, Lambda
     Lambda_inv_sum = np.sum(Lambda_inv, axis=0)
     Lambda_inv_sum_inv = np.diag(1.0 / np.diag(Lambda_inv_sum))
 
-    # define Big_S term to save later calculations
+    # define Big_S term to save later MFVI calculations
     Big_S = np.zeros((size_delta, size_delta))
     for c in range(C):
         b0 = slice(0, size_beta0)

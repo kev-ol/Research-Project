@@ -1,3 +1,5 @@
+"""Plotting functions that display the pipeline's diagnostic and comparison figures and save them to Figures/."""
+
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -299,8 +301,8 @@ def plot_irfs_comparison(gibbs_irfs, vi_irfs, country_names, variable_names, vi_
     n_draws_g, C, H_plus_1, N = gibbs_irfs.shape
     horizons = np.arange(H_plus_1)
 
-    gibbs_median = np.median(gibbs_irfs, axis=0)          # (C, H+1, N)
-    vi_median = np.median(vi_irfs, axis=0)                # (C, H+1, N)
+    gibbs_median = np.median(gibbs_irfs, axis=0)     
+    vi_median = np.median(vi_irfs, axis=0)               
     vi_p5 = np.percentile(vi_irfs, 5, axis=0)
     vi_p95 = np.percentile(vi_irfs, 95, axis=0)
 
@@ -384,7 +386,7 @@ def plot_wasserstein_grid_comparison(distances_dict, country_names, variable_nam
 
 def plot_lambda_intervals(results_by_seed, true_by_seed, methods, levels=(0.5, 0.8, 0.95), ax=None, save_name=None):
     """Plot, per seed and method, credible intervals for lambda at several nominal
-    levels alongside the true data generating value.
+    levels alongside the true data generating value (on the log-scale).
     Saves to Figures/{save_name}.pdf if save_name is given."""
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 6))
@@ -407,9 +409,9 @@ def plot_lambda_intervals(results_by_seed, true_by_seed, methods, levels=(0.5, 0
                 ax.plot([lo, hi], [y, y], color=_method_colour(method),
                         linewidth=linewidths[level], solid_capstyle="round",
                         label=METHOD_LABELS.get(method, method) if (s_idx == 0 and level == levels[0]) else None)
-
+            # plot true values
             ax.scatter([true_val], [y], color="black", marker="x", s=100, zorder=5)
-
+    # convert to log-scale
     ax.set_xscale("log")
     ax.set_yticks([s_idx * (n_methods + 1) + n_methods / 2 for s_idx in range(len(seeds))])
     ax.set_yticklabels([f"seed {s}" for s in seeds], fontsize=18)
@@ -461,6 +463,7 @@ def plot_diagnostics(ssvi_i_trace, ssvi_c_trace, ssvi_i_ess, ssvi_c_ess, rhat, t
     fig.tight_layout()
     plt.show()
 
+    #  print extra Rhat info
     print(f"max R-hat: {rhat.max():.4f}, min R-hat: {rhat.min():.4f}, "
           f"# > 1.01: {(rhat > 1.01).sum()} / {len(rhat)}")
 

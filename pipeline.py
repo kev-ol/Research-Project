@@ -1,3 +1,6 @@
+"""Orchestrates a full run of the study: 
+data prep, inference (Gibbs, MFVI, SSVI-I, SSVI-C), evaluation, and plotting, with disk caching."""
+
 from dataclasses import dataclass, field
 import pickle
 from pathlib import Path
@@ -134,10 +137,7 @@ def run_pipeline(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2,
     runtime_gibbs = time.perf_counter() - t0
     print(f"GIBBS COMPLETE ({runtime_gibbs:.1f}s)")
 
-    # thin gibbs draws to config.n_samples for a consistent sample size
-    # across all four methods. Every key except 'delta_c' is a numpy array;
-    # 'delta_c' is a plain list of lists (see gibbs.run_gibbs), so it needs
-    # list-style indexing instead of fancy indexing.
+    # thin gibbs draws to config.n_samples for a consistent sample size across all four methods.
     rng_thin = np.random.default_rng(seed_gibbs)
     thin_idx = rng_thin.choice(len(results_gibbs["lam"]), size=config.n_samples, replace=False)
     results_gibbs = {
@@ -152,7 +152,7 @@ def run_pipeline(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2,
     # converting gibbs samples into arrays for accuracy metric
     gibbs_faes_arrays = prepare_gibbs_faes_arrays(results_gibbs)
 
-    # gibbs IRFs, using the full (already-thinned) sample set directly
+    # gibbs IRFs
     irfs_gibbs, _ = compute_irfs(
         results_gibbs["beta_c"], results_gibbs["Sigma_c"],
         N=N, L=L, K=K, C=C, H=config.H, sign_pattern=config.sign_pattern, seed=irf_seed_gibbs,
@@ -305,7 +305,7 @@ def plot_pipeline_results(results, N, K, Z_width, pct=0.25):
     print("Correlation structure MAE:")
     display(corr_mae_table(results, N, K, Z_width))
 
-    # print runtime / iteration count table (VI methods only, Gibbs excluded)
+    # print runtime / iteration count table
     print("Runtime and iteration counts:")
     display(runtime_iteration_table(results))
 

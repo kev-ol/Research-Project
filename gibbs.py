@@ -1,3 +1,5 @@
+"""Gibbs sampler for the hierarchical Panel VAR, used as the ground-truth benchmark."""
+
 # Import libraries
 
 import numpy as np
@@ -9,9 +11,7 @@ from numpy.linalg import lstsq
 
 def beta_0_sample(lam, Sigma_c_inv, gamma_c, y, X, XX, Z, Lambda_inv, Lambda_inv_sum, C, N, rng):
     """Draw one sample of beta_0 from its conditional posterior with beta_c's marginalised out."""
-    # Posterior: beta_0 | rest (excluding beta_c) ~ N(mu, V)
-    # V = lambda * (sum Lambda_inv_c)^{-1}
-    # mu = V * (1/lambda) * sum_c Lambda_inv_c beta_c
+    # Posterior: beta_0 | rest (excluding beta_c)
     P_inv = [np.linalg.inv((1/lam)*Lambda_inv[c] + np.kron(Sigma_c_inv[c], XX[c])) for c in range(C)]
     precision_matrix = ((Lambda_inv_sum - (1/lam) * sum(Lambda_inv[c] @ P_inv[c] @ Lambda_inv[c] for c in range(C)))) / lam
     precision_matrix = (precision_matrix + precision_matrix.T) / 2
@@ -24,8 +24,7 @@ def beta_0_sample(lam, Sigma_c_inv, gamma_c, y, X, XX, Z, Lambda_inv, Lambda_inv
 
 def lambda_sample(beta_c, beta_0, Lambda_inv, C, N, K, rng):
     """Draw one sample of lambda from its conditional posterior."""
-    # Posterior: lambda | rest ~ InvGamma(s_bar/2, v_bar/2)
-    # v_bar = sum_c (beta_c - beta_0)' Lambda_inv_c (beta_c - beta_0)
+    # Posterior: lambda | rest
     s_bar = C*N*K -1
     v_bar = sum((beta_c[c]-beta_0).T @ Lambda_inv[c] @ (beta_c[c]-beta_0) for c in range(C))
     sample = invgamma.rvs(s_bar/2, scale=v_bar/2, random_state=rng)
@@ -34,9 +33,7 @@ def lambda_sample(beta_c, beta_0, Lambda_inv, C, N, K, rng):
 def beta_c_sample(lam, beta_0, Sigma_inv, gamma, V_beta_c, y_c, X_c, Z, Lambda_inv_c, N, rng):
     """Draw one sample of beta_c (for a single country) from its conditional
     posterior."""
-    # Posterior: beta_c | rest ~ N(mu, V)
-    # Precision = (1/lambda) Lambda_inv_c + Sigma_inv ⊗ X'X
-    # r_c removes the gamma contribution from y before computing mu
+    # Posterior: beta_c | rest
     r_c = y_c - np.kron(np.eye(N), Z) @ gamma
     mu_beta_c = V_beta_c@((1/lam)*Lambda_inv_c @ beta_0 + np.kron(Sigma_inv, X_c.T) @ r_c)
     sample = rng.multivariate_normal(mu_beta_c, V_beta_c, method="cholesky")
@@ -45,9 +42,7 @@ def beta_c_sample(lam, beta_0, Sigma_inv, gamma, V_beta_c, y_c, X_c, Z, Lambda_i
 def gamma_c_sample(Sigma_inv, beta, y_c, X_c, Z, ZZ, N, rng):
     """Draw one sample of gamma_c (for a single country) from its conditional
     posterior."""
-    # Posterior: gamma_c | rest ~ N(mu, V)
-    # Precision = Sigma_inv ⊗ Z'Z
-    # r_c removes the beta contribution from y before computing mu
+    # Posterior: gamma_c | rest
     V_gamma_c = np.linalg.inv(np.kron(Sigma_inv, ZZ))
     r_c = y_c - np.kron(np.eye(N), X_c) @ beta
     mu_gamma_c = V_gamma_c@(np.kron(Sigma_inv, Z.T)) @ r_c
@@ -57,8 +52,7 @@ def gamma_c_sample(Sigma_inv, beta, y_c, X_c, Z, ZZ, N, rng):
 def Sigma_c_sample(Beta_c, gamma_c, Y_c, X_c, Z, T, rng):
     """Draw one sample of Sigma_c (for a single country) from its conditional
     posterior."""
-    # Posterior: Sigma_c | rest ~ InvWishart(T, S_bar)
-    # S_bar is the residual sum of squares after removing fitted values
+    # Posterior: Sigma_c | rest
     resid = Y_c - X_c @ Beta_c - Z @ gamma_c
     S_bar = resid.T @ resid
     sample = invwishart.rvs(T, S_bar, random_state=rng)

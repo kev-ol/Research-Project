@@ -1,3 +1,5 @@
+"""Synthetic data generation for the simulation study, calibrated in scale to the real Jarociński data."""
+
 import numpy as np
 
 
@@ -28,6 +30,7 @@ def _build_lambda_c(var_y, target_var_w, N, N_w, L, L_w, K):
                  [N + j for l in range(len(L_w)) for j in range(N_w)])
     for c in range(C):
         var_all = np.append(var_y[c], target_var_w)
+        # diagonal of ratios of variances
         diag = np.array([var_y[c][n] / var_all[var_index[k]]
                           for n in range(N) for k in range(K)])
         Lambda[c] = np.diag(diag)
@@ -59,7 +62,6 @@ def _simulate_ar1(phi, sigma, T_total, rng, mu=0.0, x0=0.0):
 def _simulate_exog(real_series, T_total, rng):
     """Simulate exogenous columns as independent AR(1) processes fit to the
     corresponding real series."""
-    # real_series: (T_real, n_cols)
     n_cols = real_series.shape[1]
     sim = np.zeros((T_total, n_cols))
     for j in range(n_cols):
@@ -116,18 +118,20 @@ def simulate_data(Y_real, W_real, Z1_real, Z2_real, results_gibbs,
     target_var_w = np.array([ar_resid_var(W_sim[:, j], L) for j in range(W_sim.shape[1])])
     Lambda_sim = _build_lambda_c(var_y, target_var_w, N, N_w, L, L_w, K)
 
-    # true beta_0 / lambda, taken directly from the real posterior
+    # true beta_0 & lambda, taken directly from the Gibbs real data posterior
     beta0_sim = np.mean(results_gibbs['beta_0'], axis=0)
     lambda_sim = np.mean(results_gibbs['lam'])
 
-    # true Sigma_c: real posterior's average correlation structure, resampled variances
+    # true Sigma_c: Gibb's real data  posterior's average correlation structure, resampled variances
     Sigma_c_real = np.array(results_gibbs["Sigma_c"])[:, :C_real].mean(axis=0)  # (C_real, N, N)
     corr_real = np.array([
         Sigma_c_real[c] / np.outer(np.sqrt(np.diag(Sigma_c_real[c])), np.sqrt(np.diag(Sigma_c_real[c])))
         for c in range(C_real)
     ])
+    # average correlation structure
     target_corr = corr_real.mean(axis=0)
     sigma_diag_real = np.array([np.diag(Sigma_c_real[c]) for c in range(C_real)])
+    # sampled variances
     sigma_diag = _sample_var_y(sigma_diag_real, C, rng)
     Sigma_sim = np.zeros((C, N, N))
     for c in range(C):
@@ -149,8 +153,8 @@ def simulate_data(Y_real, W_real, Z1_real, Z2_real, results_gibbs,
             B_c[ :, :N*L] *= 0.95 / radius
         betas[c] = B_c.flatten()
 
-    # true gamma_c: single combined block over [Z1 lags, Z2 lags], matching data_prep.py's Z
-    gamma_c_real = np.mean(results_gibbs["gamma_c"], axis=0)  # (C_real, N*Z_width)
+    # true gamma_c: single combined block over [Z1 lags, Z2 lags]
+    gamma_c_real = np.mean(results_gibbs["gamma_c"], axis=0)
     mean_g, std_g = gamma_c_real.mean(axis=0), gamma_c_real.std(axis=0)
     gamma_c = rng.normal(mean_g, std_g, size=(C, N*Z_width))
 
@@ -169,6 +173,7 @@ def simulate_data(Y_real, W_real, Z1_real, Z2_real, results_gibbs,
             regressors = np.concatenate([lags_y, exog_w])
             Y[c, t] = betas[c].reshape(N, K) @ regressors + gamma_c[c].reshape(N, Z_width) @ exog_z + innovations[t, c]
 
+    # remove burn-in
     Y = Y[:, burn:, :]
     W_sim = W_sim[burn:]
     Z1_sim = Z1_sim[burn:]

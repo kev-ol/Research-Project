@@ -1,3 +1,5 @@
+"""Mean-field variational inference (MFVI) baseline for the hierarchical Panel VAR."""
+
 # Import libraries
 
 import numpy as np
@@ -12,9 +14,7 @@ def calc_V_delta(mu_lambda_inv, mu_sigma_inv, FF, Big_S, idx_deltac, size_deltac
     for c in range(C):
         start = idx_deltac[c]
         likelihood_precision = np.kron(mu_sigma_inv[c], FF[c])
-
-        # S_deltac places this into the delta_c block, Pc reorders
-        PtLP = Pc.T @ likelihood_precision @ Pc  # (size_deltac, size_deltac)
+        PtLP = Pc.T @ likelihood_precision @ Pc 
         precision[start:start+size_deltac, start:start+size_deltac] += PtLP
 
     return np.linalg.inv(precision)
@@ -39,9 +39,11 @@ def calc_S_bar_sigma(mu_delta, V_delta, Y, F, FF, idx_deltac, size_deltac, Z_wid
         start = idx_deltac[c]
         mu_deltac = mu_delta[start : start + size_deltac]
         vec_Gc = Pc @ mu_deltac
+        # get G_c term
         mu_Gc = vec_Gc.reshape(width, N, order='F')
 
         V_deltac = V_delta[start : start + size_deltac, start : start + size_deltac]
+        # create Omega matrix
         Omega_Gc = np.zeros((N, N))
         for i in range(N):
             for j in range(N):
@@ -93,10 +95,14 @@ def run_mfvi(mfvi_pack, Z_width, C, N, K, T):
     while len(ELBO) < 10 or ELBO[-1] - ELBO[-2] > epsilon:
         V_delta = calc_V_delta(mu_lambda_inv, mu_sigma_inv, FF, Big_S, idx_deltac, size_deltac, Pc, C)
         mu_delta = calc_mu_delta(V_delta, mu_sigma_inv, Y, F, idx_deltac, size_deltac, Pc, C)
+
+        # update for lambda
         v_bar = mu_delta.T @ Big_S @ mu_delta + np.trace(Big_S @ V_delta)
         mu_lambda_inv = s_bar/v_bar
+
         S_bar_sigma = calc_S_bar_sigma(mu_delta, V_delta, Y, F, FF, idx_deltac, size_deltac, Z_width, Pc, C, N, K)
         mu_sigma_inv = [T * np.linalg.inv(S_bar_sigma[c]) for c in range(C)]
+        
         elbo = calc_ELBO(V_delta, s_bar, v_bar, S_bar_sigma, T, C)
         ELBO.append(elbo)
 

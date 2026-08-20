@@ -1,3 +1,5 @@
+""" Star-structured variational inference independent variant (SSVI-C) for the hierarchical Panel VAR."""
+
 import numpy as np
 import arviz as az
 
@@ -166,8 +168,9 @@ def calc_S_bar_sigma(exp_mu_deltac, cov_deltac, Y, F, FF, Z_width, Pc, C, N, K):
     S_bar_sigma = [np.eye(N)] * C
     for c in range(C):
         vec_Gc = Pc @ exp_mu_deltac[c]
+        # get G_c term
         mu_Gc = vec_Gc.reshape(width, N, order='F')
-
+        # create Omega matix
         Omega_Gc = np.zeros((N, N))
         for i in range(N):
             for j in range(N):
@@ -242,16 +245,19 @@ def run_ssvi_i(ssvi_i_pack, Z_width, C, N, K, T, n_steps=1000, s = 0.01, n_burni
         q_lambda, Ds = calc_q_lambda(n_steps+n_burnin, s, lam_init, V_beta0, mu_beta0, mu_sigma_inv, Y, F, FF, Lambda_inv, size_deltac, Pc, C, N, K, rng)
         q_lambda = q_lambda[n_burnin:]
         Ds = Ds[n_burnin:]
+        # save ULA diagnostics
         log_lams = np.log(q_lambda)
         log_lams_history.append(log_lams.copy())
         ess_val = az.ess(log_lams[None, :]).item()
         ess_list.append(ess_val)
         lam_init = q_lambda[-1]
+        # get expectations
         mu_lambda_inv, mu_lambda1_V, mu_lambda2_V, exp_mu_deltac, cov_deltac, mu_log_lambda, mu_log_q_lambda, exp_logdet_V_deltac, mu_lambda_inv_D = calc_exp_lambda(
             q_lambda, mu_sigma_inv, mu_beta0, V_beta0, Ds, Y, F, FF, Lambda_inv, size_deltac, Pc, C, N, K)
 
         S_bar_sigma = calc_S_bar_sigma(exp_mu_deltac, cov_deltac, Y, F, FF, Z_width, Pc, C, N, K)
         mu_sigma_inv = [T * np.linalg.inv(S_bar_sigma[c]) for c in range(C)]
+
         elbo = calc_ELBO(V_beta0, exp_logdet_V_deltac, S_bar_sigma, mu_log_lambda, mu_lambda_inv_D, mu_log_q_lambda, C, N, K, T)
         ELBO.append(elbo)
 
