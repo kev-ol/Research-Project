@@ -81,7 +81,7 @@ by `simulate_data`) explicitly rather than leaving this as `None`.
 
 Pipeline results are cached to disk, keyed by config name, and reused unless
 explicitly recomputed (`force_recompute=True`). Writes are atomic (temp file
-+ rename) to avoid leaving a corrupted cache file if a run is interrupted.
+then rename) to avoid leaving a corrupted cache file if a run is interrupted.
 
 ## Author
 
