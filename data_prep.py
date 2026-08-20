@@ -1,81 +1,31 @@
 import numpy as np
 
-"""Preprocessing Data"""
-
 def prep_data(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2, Lambda = None):
-    """Build lagged design matrices, Minnesota-prior scale matrices, and the
-    per-model data packs consumed by `mfvi.run_mfvi`, `ssvi_i.run_ssvi_i`,
-    `ssvi_c.run_ssvi_c` and `gibbs.run_gibbs`.
+    """Build lagged design matrices, Minnesota-prior scale matrices, and data packs
+    for all four methods.
 
     Parameters
     ----------
     Y : numpy.ndarray of shape (C, T+L, N)
-        Raw endogenous panel data, including the L extra leading periods
-        needed to form lags.
+        Raw endogenous panel including L leading periods for lag construction.
     W : numpy.ndarray of shape (T+L, N_w)
-        Raw exchangeable exogenous series, including the leading periods
-        needed to form lags.
-    Z1 : numpy.ndarray of shape (T+L, ...)
-        Raw first non-exchangeable exogenous series, including the leading
-        periods needed to form the lags in `L_z1`.
-    Z2 : numpy.ndarray of shape (T+L, ...)
-        Raw second non-exchangeable exogenous series, including the leading
-        periods needed to form the lags in `L_z2`.
-    C : int
-        Number of countries.
-    N : int
-        Number of endogenous variables.
-    N_w : int
-        Number of exogenous W variables.
-    T : int
-        Number of usable (post-lag) time periods.
-    K : int
-        Total number of regressors per equation.
-    Z_width : int
-        Total number of non-exchangeable regressors per equation.
-    L : int
-        Number of endogenous lags.
-    L_w : sequence of int
-        Lags of W included as regressors.
-    L_z1 : sequence of int
-        Lags of Z1 included as regressors.
-    L_z2 : sequence of int
-        Lags of Z2 included as regressors.
+        Raw exchangeable exogenous series including leading periods.
+    Z1, Z2 : numpy.ndarray
+        Raw non-exchangeable exogenous series including leading periods.
     Lambda : numpy.ndarray of shape (C, N*K, N*K) or None, optional
-        Pre-specified Minnesota-prior diagonal scale matrices. If None
-        (default), Lambda is built internally from AR(L) residual variances
-        of the real series.
+        Pre-specified Minnesota-prior scale matrices. If None, built internally
+        from AR(L) residual variances. Default is None.
 
     Returns
     -------
     mfvi_pack : dict
-        Data pack for `mfvi.run_mfvi`, with keys 'Y' (numpy.ndarray, shape
-        (C, T, N)), 'F' (numpy.ndarray, shape (C, T, K+Z_width)), 'FF'
-        (numpy.ndarray, shape (C, K+Z_width, K+Z_width)), 'XX'
-        (numpy.ndarray, shape (C, K, K)), 'XZ' (numpy.ndarray, shape
-        (C, K, Z_width)), 'ZZ' (numpy.ndarray, shape (Z_width, Z_width)),
-        'idx_deltac' (list of length C of int), 'size_gammac' (int),
-        'size_deltac' (int), 'Pc' (numpy.ndarray, shape
-        (size_deltac, size_deltac)), 'Big_S' (numpy.ndarray, shape
-        (size_delta, size_delta)), 'Lambda_inv' (numpy.ndarray, shape
-        (C, N*K, N*K)), and 'Lambda_inv_sum' (numpy.ndarray, shape
-        (N*K, N*K)).
+        Keys: 'Y', 'F', 'FF', 'XX', 'XZ', 'ZZ', 'idx_deltac', 'size_gammac',
+        'size_deltac', 'Pc', 'Big_S', 'Lambda_inv', 'Lambda_inv_sum'.
     ssvi_i_pack : dict
-        Data pack for `ssvi_i.run_ssvi_i` and `ssvi_c.run_ssvi_c`, with keys
-        'Y' (numpy.ndarray, shape (C, T, N)), 'F' (numpy.ndarray, shape
-        (C, T, K+Z_width)), 'FF' (numpy.ndarray, shape
-        (C, K+Z_width, K+Z_width)), 'idx_deltac' (list of length C of int),
-        'size_deltac' (int), 'Pc' (numpy.ndarray, shape
-        (size_deltac, size_deltac)), 'Lambda_inv' (numpy.ndarray, shape
-        (C, N*K, N*K)), and 'Lambda_inv_sum' (numpy.ndarray, shape
-        (N*K, N*K)).
+        Keys: 'Y', 'F', 'FF', 'idx_deltac', 'size_deltac', 'Pc',
+        'Lambda_inv', 'Lambda_inv_sum'.
     gibbs_pack : dict
-        Data pack for `gibbs.run_gibbs`, with keys 'Y' (numpy.ndarray, shape
-        (C, T, N)), 'X' (numpy.ndarray, shape (C, T, K)), 'XX'
-        (numpy.ndarray, shape (C, K, K)), 'Z' (numpy.ndarray, shape
-        (T, Z_width)), 'ZZ' (numpy.ndarray, shape (Z_width, Z_width)),
-        'Lambda_inv' (numpy.ndarray, shape (C, N*K, N*K)), and
-        'Lambda_inv_sum' (numpy.ndarray, shape (N*K, N*K)).
+        Keys: 'Y', 'X', 'XX', 'Z', 'ZZ', 'Lambda_inv', 'Lambda_inv_sum'.
     """
     F = np.zeros((C, T, K+Z_width))
     X = np.zeros((C, T, K))
@@ -102,20 +52,7 @@ def prep_data(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2, Lambda
         # make Lambda for Minnesota prior
         def ar_resid_var(x, L):
             """Fit an AR(L) model with constant to a univariate series and
-            return the residual variance.
-
-            Parameters
-            ----------
-            x : numpy.ndarray of shape (T,)
-                Univariate time series.
-            L : int
-                Number of autoregressive lags.
-
-            Returns
-            -------
-            float
-                Variance of the residuals from the fitted AR(L) model.
-            """
+            return the residual variance."""
             T = len(x)
             Y_ = x[L:]
             X_ = np.column_stack([x[L-l:T-l] for l in range(1, L+1)] + [np.ones(T-L)])

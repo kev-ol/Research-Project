@@ -1,71 +1,17 @@
 import numpy as np
 import arviz as az
 
-"""SSVI-I Update Functions"""
+### SSVI-I Update Functions ###
 
 def calc_V_beta0(mu_lambda_inv, mu_lambda2_V, Lambda_inv, Lambda_inv_sum, C, N, K):
-    """Compute the beta_0 covariance matrix under the independent factorization,
-    using the current expectations of 1/lambda and (1/lambda)^2 * V_deltac.
-
-    Parameters
-    ----------
-    mu_lambda_inv : float
-        Current expectation of 1/lambda under q(lambda).
-    mu_lambda2_V : list of length C of numpy.ndarray of shape (size_deltac, size_deltac)
-        Current expectation of (1/lambda)^2 * V_deltac, per country.
-    Lambda_inv : list of length C of numpy.ndarray of shape (N*K, N*K)
-        Per-country inverse Minnesota-prior scale matrices.
-    Lambda_inv_sum : numpy.ndarray of shape (N*K, N*K)
-        Sum of `Lambda_inv` over countries.
-    C : int
-        Number of countries.
-    N : int
-        Number of endogenous variables.
-    K : int
-        Number of regressors per equation.
-
-    Returns
-    -------
-    numpy.ndarray of shape (N*K, N*K)
-        beta_0 covariance matrix.
-    """
+    """Compute the beta_0 covariance matrix under the independent factorization,"""
     sum = mu_lambda_inv * Lambda_inv_sum
     for c in range(C):
         sum -= Lambda_inv[c] @ mu_lambda2_V[c][:N*K,:N*K] @ Lambda_inv[c]
     return np.linalg.inv(sum)
 
 def calc_mu_beta0(mu_lambda1_V, mu_sigma_inv, V_beta0, Y, F, Lambda_inv, Pc, C, N, K):
-    """Compute the beta_0 posterior mean under the independent factorization.
-
-    Parameters
-    ----------
-    mu_lambda1_V : list of length C of numpy.ndarray of shape (size_deltac, size_deltac)
-        Current expectation of (1/lambda) * V_deltac, per country.
-    mu_sigma_inv : list of length C of numpy.ndarray of shape (N, N)
-        Per-country expected precision of Sigma_c.
-    V_beta0 : numpy.ndarray of shape (N*K, N*K)
-        beta_0 covariance matrix, as returned by `calc_V_beta0`.
-    Y : numpy.ndarray of shape (C, T, N)
-        Endogenous panel data.
-    F : sequence of length C of numpy.ndarray of shape (T, K+Z_width)
-        Per-country design matrices (all regressors).
-    Lambda_inv : list of length C of numpy.ndarray of shape (N*K, N*K)
-        Per-country inverse Minnesota-prior scale matrices.
-    Pc : numpy.ndarray of shape (size_deltac, size_deltac)
-        Reordering matrix mapping stacked [beta_c, gamma_c] to the
-        equation-interleaved delta_c ordering.
-    C : int
-        Number of countries.
-    N : int
-        Number of endogenous variables.
-    K : int
-        Number of regressors per equation.
-
-    Returns
-    -------
-    numpy.ndarray of shape (N*K,)
-        beta_0 posterior mean.
-    """
+    """Compute the beta_0 posterior mean under the independent factorization. """
     sum = np.zeros(V_beta0.shape[0])
     for c in range(C):
         # use (A kron B) vec(X) = vec(A X B.T)
@@ -73,35 +19,7 @@ def calc_mu_beta0(mu_lambda1_V, mu_sigma_inv, V_beta0, Y, F, Lambda_inv, Pc, C, 
     return V_beta0 @ sum
 
 def calc_V_deltac(lam, mu_sigma_inv, FF, Lambda_inv, size_deltac, Pc, C, N, K):
-    """Compute the batched per-country delta_c covariance, conditional on lambda samples.
-
-    Parameters
-    ----------
-    lam : float or array_like of shape (n,)
-        Sample(s) of the shrinkage parameter lambda; coerced to at least 1-d.
-    mu_sigma_inv : list of length C of numpy.ndarray of shape (N, N)
-        Per-country expected precision of Sigma_c.
-    FF : sequence of length C of numpy.ndarray of shape (K+Z_width, K+Z_width)
-        Per-country F_c.T @ F_c matrices.
-    Lambda_inv : list of length C of numpy.ndarray of shape (N*K, N*K)
-        Per-country inverse Minnesota-prior scale matrices.
-    size_deltac : int
-        Dimension of the stacked delta_c = [beta_c, gamma_c] vector.
-    Pc : numpy.ndarray of shape (size_deltac, size_deltac)
-        Reordering matrix mapping stacked [beta_c, gamma_c] to the
-        equation-interleaved delta_c ordering.
-    C : int
-        Number of countries.
-    N : int
-        Number of endogenous variables.
-    K : int
-        Number of regressors per equation.
-
-    Returns
-    -------
-    list of length C of numpy.ndarray of shape (n, size_deltac, size_deltac)
-        Batched delta_c covariance for each country, one matrix per lambda sample.
-    """
+    """Compute the batched per-country delta_c covariance, conditional on lambda samples."""
     lam = np.atleast_1d(lam)
     n = len(lam)
     V_deltac = [np.eye(size_deltac)] * C
@@ -114,45 +32,7 @@ def calc_V_deltac(lam, mu_sigma_inv, FF, Lambda_inv, size_deltac, Pc, C, N, K):
 
 def calc_mu_deltac(lam, beta0, V_deltac, mu_sigma_inv, Y, F, Lambda_inv, size_deltac, Pc, C, N, K):
     """Compute the batched per-country delta_c posterior mean, conditional on lambda
-    (and, optionally, paired beta_0) samples.
-
-    Parameters
-    ----------
-    lam : float or array_like of shape (n,)
-        Sample(s) of the shrinkage parameter lambda; coerced to at least 1-d.
-    beta0 : array_like of shape (N*K,) or (n, N*K)
-        beta_0 mean(s). If 2-d, `beta0.shape[0]` must equal `len(lam)` and rows
-        are paired one-to-one with the lambda samples; if 1-d, it is broadcast
-        against all lambda samples.
-    V_deltac : list of length C of numpy.ndarray of shape (n, size_deltac, size_deltac)
-        Per-country delta_c covariance, batched over the lambda samples, as
-        returned by `calc_V_deltac`.
-    mu_sigma_inv : list of length C of numpy.ndarray of shape (N, N)
-        Per-country expected precision of Sigma_c.
-    Y : numpy.ndarray of shape (C, T, N)
-        Endogenous panel data.
-    F : sequence of length C of numpy.ndarray of shape (T, K+Z_width)
-        Per-country design matrices (all regressors).
-    Lambda_inv : list of length C of numpy.ndarray of shape (N*K, N*K)
-        Per-country inverse Minnesota-prior scale matrices.
-    size_deltac : int
-        Dimension of the stacked delta_c = [beta_c, gamma_c] vector.
-    Pc : numpy.ndarray of shape (size_deltac, size_deltac)
-        Reordering matrix mapping stacked [beta_c, gamma_c] to the
-        equation-interleaved delta_c ordering.
-    C : int
-        Number of countries.
-    N : int
-        Number of endogenous variables.
-    K : int
-        Number of regressors per equation.
-
-    Returns
-    -------
-    list of length C of numpy.ndarray of shape (n, size_deltac)
-        Batched delta_c posterior mean for each country, one vector per lambda
-        (and paired beta_0) sample.
-    """
+    (and, optionally, paired beta_0) samples."""
     lam = np.atleast_1d(lam)
     n = len(lam)
     beta0 = np.asarray(beta0)
@@ -178,46 +58,9 @@ def calc_mu_deltac(lam, beta0, V_deltac, mu_sigma_inv, Y, F, Lambda_inv, size_de
     return mu_deltac
 
 def calc_D(lam, V_beta0, mu_beta0, mu_sigma_inv, Y, F, FF, Lambda_inv, size_deltac, Pc, C, N, K):
-    """Compute the per-country D statistic (expected quadratic form used in the
+    """Compute the per-country D statistic (used in the
     score-function update of q(lambda)) for a single scalar lambda value, given
-    the current fixed mean-field beta_0 factor q(beta_0).
-
-    Parameters
-    ----------
-    lam : float
-        A single lambda value (internally broadcast to a length-1 batch, then
-        the batch dimension is squeezed out of the result).
-    V_beta0 : numpy.ndarray of shape (N*K, N*K)
-        Current beta_0 covariance under q(beta_0).
-    mu_beta0 : numpy.ndarray of shape (N*K,)
-        Current beta_0 mean under q(beta_0).
-    mu_sigma_inv : list of length C of numpy.ndarray of shape (N, N)
-        Per-country expected precision of Sigma_c.
-    Y : numpy.ndarray of shape (C, T, N)
-        Endogenous panel data.
-    F : sequence of length C of numpy.ndarray of shape (T, K+Z_width)
-        Per-country design matrices (all regressors).
-    FF : sequence of length C of numpy.ndarray of shape (K+Z_width, K+Z_width)
-        Per-country F_c.T @ F_c matrices.
-    Lambda_inv : list of length C of numpy.ndarray of shape (N*K, N*K)
-        Per-country inverse Minnesota-prior scale matrices.
-    size_deltac : int
-        Dimension of the stacked delta_c = [beta_c, gamma_c] vector.
-    Pc : numpy.ndarray of shape (size_deltac, size_deltac)
-        Reordering matrix mapping stacked [beta_c, gamma_c] to the
-        equation-interleaved delta_c ordering.
-    C : int
-        Number of countries.
-    N : int
-        Number of endogenous variables.
-    K : int
-        Number of regressors per equation.
-
-    Returns
-    -------
-    list of length C of float
-        D statistic for each country, evaluated at `lam`.
-    """
+    the current fixed mean-field beta_0 factor q(beta_0)."""
     V_deltac = calc_V_deltac(lam, mu_sigma_inv, FF, Lambda_inv, size_deltac, Pc, C, N, K)
     mu_bar_deltac = calc_mu_deltac(lam, mu_beta0, V_deltac, mu_sigma_inv, Y, F, Lambda_inv, size_deltac, Pc, C, N, K)
 
@@ -238,51 +81,7 @@ def calc_D(lam, V_beta0, mu_beta0, mu_sigma_inv, Y, F, FF, Lambda_inv, size_delt
 def calc_q_lambda(n_steps, s, lam_init, V_beta0, mu_beta0, mu_sigma_inv, Y, F, FF, Lambda_inv, size_deltac, Pc, C, N, K, rng):
     """Draw a chain of lambda samples via an Unadjusted Langevin Algorithm (ULA)
     with an RMSProp-style adaptive step size, sampling in log(lambda) space,
-    given a fixed independent beta_0 factor q(beta_0).
-
-    Parameters
-    ----------
-    n_steps : int
-        Number of ULA steps to run.
-    s : float
-        Base step-size scale.
-    lam_init : float
-        Initial value of lambda.
-    V_beta0 : numpy.ndarray of shape (N*K, N*K)
-        Current beta_0 covariance under q(beta_0).
-    mu_beta0 : numpy.ndarray of shape (N*K,)
-        Current beta_0 mean under q(beta_0).
-    mu_sigma_inv : list of length C of numpy.ndarray of shape (N, N)
-        Per-country expected precision of Sigma_c.
-    Y : numpy.ndarray of shape (C, T, N)
-        Endogenous panel data.
-    F : sequence of length C of numpy.ndarray of shape (T, K+Z_width)
-        Per-country design matrices (all regressors).
-    FF : sequence of length C of numpy.ndarray of shape (K+Z_width, K+Z_width)
-        Per-country F_c.T @ F_c matrices.
-    Lambda_inv : list of length C of numpy.ndarray of shape (N*K, N*K)
-        Per-country inverse Minnesota-prior scale matrices.
-    size_deltac : int
-        Dimension of the stacked delta_c = [beta_c, gamma_c] vector.
-    Pc : numpy.ndarray of shape (size_deltac, size_deltac)
-        Reordering matrix mapping stacked [beta_c, gamma_c] to the
-        equation-interleaved delta_c ordering.
-    C : int
-        Number of countries.
-    N : int
-        Number of endogenous variables.
-    K : int
-        Number of regressors per equation.
-    rng : numpy.random.Generator
-        Random number generator used to draw the ULA innovation at each step.
-
-    Returns
-    -------
-    lams : numpy.ndarray of shape (n_steps,)
-        Sampled lambda chain (exponentiated log-lambda samples).
-    Ds : numpy.ndarray of shape (n_steps, C)
-        D statistic (per country) recorded at each step of the chain.
-    """
+    given a fixed independent beta_0 factor q(beta_0)."""
     log_lams = np.zeros(n_steps)
     Ds = np.zeros((n_steps, C))
     # initialise log-lambda and v
@@ -316,63 +115,7 @@ def calc_q_lambda(n_steps, s, lam_init, V_beta0, mu_beta0, mu_sigma_inv, Y, F, F
 
 def calc_exp_lambda(lams, mu_sigma_inv, mu_beta0, V_beta0, Ds, Y, F, FF, Lambda_inv, size_deltac, Pc, C, N, K):
     """Compute Monte Carlo expectations (over sampled lambda values) of the
-    quantities needed to update the CAVI blocks and the ELBO.
-
-    Parameters
-    ----------
-    lams : array_like of shape (n,)
-        Chain samples of lambda (post burn-in).
-    mu_sigma_inv : list of length C of numpy.ndarray of shape (N, N)
-        Per-country expected precision of Sigma_c.
-    mu_beta0 : numpy.ndarray of shape (N*K,)
-        Current beta_0 mean under q(beta_0).
-    V_beta0 : numpy.ndarray of shape (N*K, N*K)
-        Current beta_0 covariance under q(beta_0).
-    Ds : numpy.ndarray of shape (n, C)
-        D statistic per step per country, recorded alongside `lams`
-        (see `calc_q_lambda`).
-    Y : numpy.ndarray of shape (C, T, N)
-        Endogenous panel data.
-    F : sequence of length C of numpy.ndarray of shape (T, K+Z_width)
-        Per-country design matrices (all regressors).
-    FF : sequence of length C of numpy.ndarray of shape (K+Z_width, K+Z_width)
-        Per-country F_c.T @ F_c matrices.
-    Lambda_inv : list of length C of numpy.ndarray of shape (N*K, N*K)
-        Per-country inverse Minnesota-prior scale matrices.
-    size_deltac : int
-        Dimension of the stacked delta_c = [beta_c, gamma_c] vector.
-    Pc : numpy.ndarray of shape (size_deltac, size_deltac)
-        Reordering matrix mapping stacked [beta_c, gamma_c] to the
-        equation-interleaved delta_c ordering.
-    C : int
-        Number of countries.
-    N : int
-        Number of endogenous variables.
-    K : int
-        Number of regressors per equation.
-
-    Returns
-    -------
-    mu_lambda_inv : float
-        Mean of 1/lambda over the samples.
-    mu_lambda1_V : list of length C of numpy.ndarray of shape (size_deltac, size_deltac)
-        Mean of (1/lambda) * V_deltac over the samples, per country.
-    mu_lambda2_V : list of length C of numpy.ndarray of shape (size_deltac, size_deltac)
-        Mean of (1/lambda)^2 * V_deltac over the samples, per country.
-    exp_mu_deltac : list of length C of numpy.ndarray of shape (size_deltac,)
-        Monte Carlo mean of delta_c over the lambda samples, per country.
-    cov_deltac : list of length C of numpy.ndarray of shape (size_deltac, size_deltac)
-        Total covariance of delta_c (law-of-total-variance decomposition,
-        accounting for lambda uncertainty), per country.
-    mu_log_lambda : float
-        Mean of log(lambda) over the samples.
-    mu_log_q_lambda : float
-        Monte Carlo (Vasicek spacing) estimate of E[log q(lambda)].
-    exp_logdet_V_deltac : list of length C of float
-        Expected log-determinant of the delta_c covariance, per country.
-    mu_lambda_inv_D : float
-        Mean, over the samples, of sum_c D_c / lambda.
-    """
+    quantities needed to update the CAVI blocks and the ELBO."""
     # expectations for other updates
     lams = np.atleast_1d(lams)
     inv_lams = 1/lams
@@ -418,37 +161,7 @@ def calc_exp_lambda(lams, mu_sigma_inv, mu_beta0, V_beta0, Ds, Y, F, FF, Lambda_
 
 def calc_S_bar_sigma(exp_mu_deltac, cov_deltac, Y, F, FF, Z_width, Pc, C, N, K):
     """Compute the per-country expected residual-sum-of-squares-plus-uncertainty
-    matrix used to update the expected precision of Sigma_c.
-
-    Parameters
-    ----------
-    exp_mu_deltac : list of length C of numpy.ndarray of shape (size_deltac,)
-        Expected delta_c vector per country.
-    cov_deltac : list of length C of numpy.ndarray of shape (size_deltac, size_deltac)
-        Covariance of delta_c per country.
-    Y : numpy.ndarray of shape (C, T, N)
-        Endogenous panel data.
-    F : sequence of length C of numpy.ndarray of shape (T, K+Z_width)
-        Per-country design matrices (all regressors).
-    FF : sequence of length C of numpy.ndarray of shape (K+Z_width, K+Z_width)
-        Per-country F_c.T @ F_c matrices.
-    Z_width : int
-        Number of non-exchangeable regressors per equation.
-    Pc : numpy.ndarray of shape (size_deltac, size_deltac)
-        Reordering matrix mapping stacked [beta_c, gamma_c] to the
-        equation-interleaved delta_c ordering.
-    C : int
-        Number of countries.
-    N : int
-        Number of endogenous variables.
-    K : int
-        Number of regressors per equation.
-
-    Returns
-    -------
-    list of length C of numpy.ndarray of shape (N, N)
-        Expected scale matrix S_bar_sigma_c for each country's Sigma_c update.
-    """
+    matrix used to update the expected precision of Sigma_c."""
     width = K+Z_width
     S_bar_sigma = [np.eye(N)] * C
     for c in range(C):
@@ -467,36 +180,7 @@ def calc_S_bar_sigma(exp_mu_deltac, cov_deltac, Y, F, FF, Z_width, Pc, C, N, K):
 
 def calc_ELBO(V_beta0, exp_logdet_V_deltac, S_bar_sigma, mu_log_lambda, mu_lambda_inv_D, mu_log_q_lambda, C, N, K, T):
     """Compute the evidence lower bound (ELBO) for the current mean-field
-    variational approximation.
-
-    Parameters
-    ----------
-    V_beta0 : numpy.ndarray of shape (N*K, N*K)
-        Current beta_0 covariance under q(beta_0).
-    exp_logdet_V_deltac : list of length C of float
-        Expected log-determinant of the delta_c covariance, per country.
-    S_bar_sigma : list of length C of numpy.ndarray of shape (N, N)
-        Expected scale matrix for each country's Sigma_c.
-    mu_log_lambda : float
-        Mean of log(lambda) over the samples.
-    mu_lambda_inv_D : float
-        Mean, over the samples, of sum_c D_c / lambda.
-    mu_log_q_lambda : float
-        Monte Carlo estimate of E[log q(lambda)].
-    C : int
-        Number of countries.
-    N : int
-        Number of endogenous variables.
-    K : int
-        Number of regressors per equation.
-    T : int
-        Number of time periods.
-
-    Returns
-    -------
-    float
-        The ELBO value.
-    """
+    variational approximation."""
     _, logdet_V_beta0 = np.linalg.slogdet(V_beta0)
     elbo = (logdet_V_beta0 + np.sum((exp_logdet_V_deltac)) - (C*N*K + 1)* mu_log_lambda - mu_lambda_inv_D)/2 - mu_log_q_lambda
     for c in range(C):
@@ -504,61 +188,38 @@ def calc_ELBO(V_beta0, exp_logdet_V_deltac, S_bar_sigma, mu_log_lambda, mu_lambd
         elbo -= T * logdet_S / 2
     return elbo
 
-"""SSVI-I Loop"""
+### SSVI-I Loop ###
 
 def run_ssvi_i(ssvi_i_pack, Z_width, C, N, K, T, n_steps=1000, s = 0.01, n_burnin = 100, epsilon=0.05, rng=None):
-    """Run the SSVI-I (semi-structured variational inference, independent
-    mean-field lambda variant) coordinate-ascent loop until the ELBO converges.
+    """Run the SSVI-I coordinate-ascent loop until the ELBO converges.
 
     Parameters
     ----------
     ssvi_i_pack : dict
-        Data pack produced by `data_prep.prep_data`, with (in order) keys
-        'Y' (numpy.ndarray, shape (C, T, N)), 'F' (sequence of length C of
-        numpy.ndarray, shape (T, K+Z_width)), 'FF' (sequence of length C of
-        numpy.ndarray, shape (K+Z_width, K+Z_width)), 'idx_deltac' (list of
-        int), 'size_deltac' (int), 'Pc' (numpy.ndarray, shape
-        (size_deltac, size_deltac)), 'Lambda_inv' (list of length C of
-        numpy.ndarray, shape (N*K, N*K)), and 'Lambda_inv_sum' (numpy.ndarray,
-        shape (N*K, N*K)).
-    Z_width : int
-        Number of non-exchangeable regressors per equation.
-    C : int
-        Number of countries.
-    N : int
-        Number of endogenous variables.
-    K : int
-        Number of regressors per equation.
-    T : int
-        Number of time periods.
+        Data pack keys: 'Y', 'F', 'FF', 'idx_deltac', 'size_deltac', 'Pc',
+        'Lambda_inv', 'Lambda_inv_sum'.
     n_steps : int, optional
-        Number of post-burn-in ULA steps drawn per outer iteration. Default is 1000.
+        Post-burn-in ULA steps per outer iteration. Default is 1000.
     s : float, optional
-        Base ULA step-size scale. Default is 0.01.
+        ULA step-size scale. Default is 0.01.
     n_burnin : int, optional
-        Number of initial ULA steps discarded per outer iteration. Default is 100.
+        ULA burn-in steps per outer iteration. Default is 100.
     epsilon : float, optional
-        Convergence threshold on the mean absolute change of the ELBO over the
-        last 3 iterations. Default is 0.05.
-    rng : int, numpy.random.SeedSequence, numpy.random.Generator, or None, optional
-        Source of randomness for the Langevin (ULA) chain. If None (default),
-        a fresh, non-reproducible generator is used.
+        ELBO convergence threshold (mean absolute change over last 3 iterations).
+        Default is 0.05.
+    rng : int, Generator, or None, optional
+        Random seed. Default is None.
 
     Returns
     -------
     params : dict
-        Dictionary with keys 'mu_beta0' (numpy.ndarray, shape (N*K,)),
-        'V_beta0' (numpy.ndarray, shape (N*K, N*K)), 'q_lambda'
-        (numpy.ndarray, shape (n_steps,), the converged lambda chain),
-        'S_bar_sigma' (list of length C of numpy.ndarray, shape (N, N)), and
-        'cov_deltac' (list of length C of numpy.ndarray, shape
-        (size_deltac, size_deltac)).
+        Keys: 'mu_beta0', 'V_beta0', 'q_lambda', 'S_bar_sigma', 'cov_deltac'.
     ELBO : list of float
-        ELBO value at each outer coordinate-ascent iteration.
+        ELBO at each iteration.
     ess_list : list of float
-        Effective sample size of the log-lambda chain at each outer iteration.
+        ESS of the log-lambda chain at each iteration.
     log_lams_history : list of numpy.ndarray
-        log(lambda) chain samples recorded at each outer iteration.
+        log(lambda) chain at each iteration.
     """
     Y, F, FF, idx_deltac, size_deltac, Pc, Lambda_inv, Lambda_inv_sum = ssvi_i_pack.values()
     rng = np.random.default_rng(rng)

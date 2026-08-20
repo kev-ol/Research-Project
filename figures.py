@@ -7,25 +7,23 @@ from matplotlib.colors import to_rgba
 from results import extract_cov_mfvi, cov2corr
 from matplotlib.patches import Patch
 
+### Preparations for Figures ###
 
 FIGURES_DIR = Path("Figures")
 
 
 def _save_fig(fig, save_name):
-    """Save `fig` as a PDF to Figures/{save_name}.pdf (creating the folder
-    if needed). No-op if `save_name` is None."""
+    """Save fig as a PDF to Figures/{save_name}.pdf (creating the folder
+    if needed). No operationif `save_name` is None."""
     if save_name is None:
         return
     FIGURES_DIR.mkdir(exist_ok=True)
     fig.savefig(FIGURES_DIR / f"{save_name}.pdf", bbox_inches="tight")
 
 
-"""Method colour/ordering convention, shared by every plot in this module.
-
-All comparison figures should order methods as MFVI, SSVI-I, SSVI-C, Gibbs
-and colour them Gibbs=yellow (gold, for contrast against white), MFVI=blue,
-SSVI-I=green, SSVI-C=red.
-"""
+## Method colour/ordering convention
+# All comparison figures should order methods as MFVI, SSVI-I, SSVI-C, Gibbs
+# and colour them Gibbs=yellow (gold), MFVI=blue, SSVI-I=green, SSVI-C=red.
 
 METHOD_ORDER = ["mfvi", "ssvi_i", "ssvi_c", "gibbs"]
 METHOD_LABELS = {"mfvi": "MFVI", "ssvi_i": "SSVI-I", "ssvi_c": "SSVI-C", "gibbs": "Gibbs"}
@@ -56,11 +54,11 @@ def _ordered_methods(labels_or_keys):
     return sorted(items, key=sort_key)
 
 
-MEDIAN_PROPS = dict(color="black", linewidth=2)  # kept opaque so it reads over any fill, incl. gold
+MEDIAN_PROPS = dict(color="black", linewidth=2)  # kept boxplot medianopaque so it reads over any fill, incl. gold
 
 
 def _shade_boxes(bp, labels_or_keys, alpha=0.35):
-    """Lightly fill each box of a `patch_artist=True` boxplot result `bp`
+    """Lightly fill each box of a boxplot result
     with its own method's convention colour. Alpha is baked into the
     facecolor only, so box edges and the median line (drawn separately,
     on top, per MEDIAN_PROPS) stay fully opaque."""
@@ -70,36 +68,19 @@ def _shade_boxes(bp, labels_or_keys, alpha=0.35):
 
 
 def _shade_all_boxes(bp, color, alpha=0.35):
-    """Lightly fill every box of a `patch_artist=True` boxplot result `bp`
+    """Lightly fill every box of a boxplot result
     with a single convention colour (for single-method figures). Alpha is
-    baked into the facecolor only; see `_shade_boxes`."""
+    baked into the facecolor only, as in _shade_boxes."""
     for patch in bp["boxes"]:
         patch.set_facecolor(to_rgba(color, alpha))
         patch.set_edgecolor("black")
 
 
-"""UQF (Uncertainty Quantification Factor)"""
+### Uncertainty Quantification Factor ###
 
 def plot_uqf_boxplot(results_dict, methods=("mfvi", "ssvi_i", "ssvi_c"), save_name=None):
     """Boxplot of UQF values, pooled across seeds, for each method.
-
-    Parameters
-    ----------
-    results_dict : dict
-        Mapping from seed to a dict containing, for each entry in `methods`,
-        a sub-dict with key "uqf" (array_like of float, the per-country UQF
-        values for that seed and method).
-    methods : sequence of str, optional
-        Method names to include. Default is ("mfvi", "ssvi_i", "ssvi_c").
-    save_name : str or None, optional
-        If given, the figure is also saved as `Figures/{save_name}.pdf`
-        (the folder is created if needed). Default is None (no save).
-
-    Returns
-    -------
-    None
-        Displays the matplotlib figure; nothing is returned.
-    """
+    Saves to Figures/{save_name}.pdf if save_name is given."""
     methods = _ordered_methods(methods)
     seeds = list(results_dict.keys())
     pooled = {method: np.concatenate([results_dict[seed][method]["uqf"] for seed in seeds]) for method in methods}
@@ -116,32 +97,12 @@ def plot_uqf_boxplot(results_dict, methods=("mfvi", "ssvi_i", "ssvi_c"), save_na
     _save_fig(fig, save_name)
     plt.show()
 
-"""Correlation Mean Absolute Error (MAE)"""
+### Mean Absolute Error of Off-Diagonal Correlations ###
 
 def plot_corr_mae_boxplots(results_dict, N, K, Z_width, save_name=None):
     """Boxplots of mean absolute delta_c correlation error vs Gibbs, pooled
     across countries and seeds, for each VI method.
-
-    Parameters
-    ----------
-    results_dict : dict
-        Mapping from seed to a single-seed results dict (see
-        `results.corr_mae_table` for its required structure).
-    N : int
-        Number of endogenous variables.
-    K : int
-        Number of regressors per equation.
-    Z_width : int
-        Number of non-exchangeable regressors per equation.
-    save_name : str or None, optional
-        If given, the figure is also saved as `Figures/{save_name}.pdf`
-        (the folder is created if needed). Default is None (no save).
-
-    Returns
-    -------
-    None
-        Displays the matplotlib figure; nothing is returned.
-    """
+    Saves to Figures/{save_name}.pdf if save_name is given."""
     seeds = list(results_dict.keys())
     method_keys = ["mfvi", "ssvi_i", "ssvi_c"]
     method_names = [METHOD_LABELS[k] for k in method_keys]
@@ -176,28 +137,11 @@ def plot_corr_mae_boxplots(results_dict, N, K, Z_width, save_name=None):
     _save_fig(fig, save_name)
     plt.show()
 
-"""Accuracy Measure (Faes et al. 2011)"""
+### Accuracy Measure ###
 
 def plot_accuracy_boxplots(results_faes, method_name, C, save_name=None):
-    """Boxplots of Faes accuracy per parameter block, for one VI method vs Gibbs.
-
-    Parameters
-    ----------
-    results_faes : dict
-        Output of `results.compute_faes_scores`.
-    method_name : str
-        Label for the VI method, used in the figure title.
-    C : int
-        Number of countries.
-    save_name : str or None, optional
-        If given, the figure is also saved as `Figures/{save_name}.pdf`
-        (the folder is created if needed). Default is None (no save).
-
-    Returns
-    -------
-    None
-        Displays the matplotlib figure; nothing is returned.
-    """
+    """Boxplots of accuracy per parameter block, for one VI method vs Gibbs.
+    Saves to Figures/{save_name}.pdf if save_name is given."""
     country_labels = [f'C{c+1}' for c in range(C)]
     color = _method_colour(method_name)
 
@@ -261,27 +205,8 @@ def plot_accuracy_boxplots(results_faes, method_name, C, save_name=None):
     plt.show()
 
 def plot_accuracy_boxplots_pooled(results_dict, method_name, method_key, save_name=None):
-    """Same layout as plot_accuracy_boxplots, but pooled across seeds and countries.
-
-    Parameters
-    ----------
-    results_dict : dict
-        Mapping from seed to a per-seed results dict, each containing key
-        "C" (int) and `method_key` (dict with key "faes", the output of
-        `results.compute_faes_scores`).
-    method_name : str
-        Label for the VI method, used in the figure title.
-    method_key : str
-        Key into each seed's results dict identifying this method's results.
-    save_name : str or None, optional
-        If given, the figure is also saved as `Figures/{save_name}.pdf`
-        (the folder is created if needed). Default is None (no save).
-
-    Returns
-    -------
-    None
-        Displays the matplotlib figure; nothing is returned.
-    """
+    """Boxplots of accuracy per parameter block, for one VI method vs Gibbs, pooled across seeds and countries.
+    Saves to Figures/{save_name}.pdf if save_name is given."""
     seeds = list(results_dict.keys())
     C = results_dict[seeds[0]]["C"]
 
@@ -340,28 +265,8 @@ def plot_accuracy_boxplots_pooled(results_dict, method_name, method_key, save_na
     plt.show()
 
 def plot_lambda_accuracy_pooled(results_dict, method_pairs=(("MFVI", "mfvi"), ("SSVI-I", "ssvi_i"), ("SSVI-C", "ssvi_c")), save_name=None):
-    """Scatter of pooled lambda Faes accuracy, one column per VI method,
-    with one point per seed.
-
-    Parameters
-    ----------
-    results_dict : dict
-        Mapping from seed to a per-seed results dict, each containing, for
-        every key in `method_pairs`, a sub-dict with key "faes" (output of
-        `results.compute_faes_scores`).
-    method_pairs : sequence of (str, str), optional
-        (label, method_key) pairs identifying which methods to plot and in
-        what order. Default is (("MFVI", "mfvi"), ("SSVI-I", "ssvi_i"),
-        ("SSVI-C", "ssvi_c")).
-    save_name : str or None, optional
-        If given, the figure is also saved as `Figures/{save_name}.pdf`
-        (the folder is created if needed). Default is None (no save).
-
-    Returns
-    -------
-    None
-        Displays the matplotlib figure; nothing is returned.
-    """
+    """Scatter of pooled lambda accuracy, one column per VI method, with one point per seed.
+    Saves to Figures/{save_name}.pdf if save_name is given."""
     ordered_keys = _ordered_methods([key for _, key in method_pairs])
     method_pairs = sorted(method_pairs, key=lambda pair: ordered_keys.index(pair[1]))
     seeds = list(results_dict.keys())
@@ -386,36 +291,11 @@ def plot_lambda_accuracy_pooled(results_dict, method_pairs=(("MFVI", "mfvi"), ("
     plt.show()
 
 
-"""Impulse Response Functions"""
+ ### Impulse Response Functions ###
 
 def plot_irfs_comparison(gibbs_irfs, vi_irfs, country_names, variable_names, vi_label="VI", save_name=None):
-    """
-    Plot a grid of impulse response comparisons between Gibbs and a VI method.
-
-    Parameters
-    ----------
-    gibbs_irfs : numpy.ndarray of shape (n_draws_gibbs, C, H+1, N)
-        IRFs from `results.compute_irfs` using Gibbs posterior draws —
-        plotted as blue fanchart (5-95 percentile, 5% steps) + black solid
-        median.
-    vi_irfs : numpy.ndarray of shape (n_draws_vi, C, H+1, N)
-        IRFs from `results.compute_irfs` using a VI method's posterior
-        draws — plotted as red solid median + red dashed 5/95 percentiles.
-    country_names : sequence of length C of str
-        Country labels, used as column titles.
-    variable_names : sequence of length N of str
-        Variable labels, used as row y-labels.
-    vi_label : str, optional
-        Label for the VI method, used in the figure title. Default is "VI".
-    save_name : str or None, optional
-        If given, the figure is also saved as `Figures/{save_name}.pdf`
-        (the folder is created if needed). Default is None (no save).
-
-    Returns
-    -------
-    None
-        Displays the matplotlib figure; nothing is returned.
-    """
+    """Plot a grid of impulse response comparisons between Gibbs and a VI method.
+    Saves to Figures/{save_name}.pdf if save_name is given."""
     n_draws_g, C, H_plus_1, N = gibbs_irfs.shape
     horizons = np.arange(H_plus_1)
 
@@ -468,32 +348,9 @@ def plot_irfs_comparison(gibbs_irfs, vi_irfs, country_names, variable_names, vi_
     plt.show()
 
 def plot_wasserstein_grid_comparison(distances_dict, country_names, variable_names, save_name=None):
-    """
-    Plot a grid comparison of Wasserstein-distance curves for multiple VI
+    """Plot a grid comparison of Wasserstein-distance curves for multiple VI
     methods against Gibbs.
-
-    Layout matches the IRF grid: rows = variables, columns = countries.
-    Each panel overlays one line per method.
-
-    Parameters
-    ----------
-    distances_dict : dict
-        Mapping from method label (str) to numpy.ndarray of shape
-        (C, H+1, N) from `results.compute_wasserstein_curve`, e.g.
-        {"mfvi": wass_mfvi, "SSVI_I": wass_ssvi_i, "SSVI_C": wass_ssvi_c}.
-    country_names : sequence of length C of str
-        Country labels, used as column titles.
-    variable_names : sequence of length N of str
-        Variable labels, used as row y-labels.
-    save_name : str or None, optional
-        If given, the figure is also saved as `Figures/{save_name}.pdf`
-        (the folder is created if needed). Default is None (no save).
-
-    Returns
-    -------
-    None
-        Displays the matplotlib figure; nothing is returned.
-    """
+    Saves to Figures/{save_name}.pdf if save_name is given."""
     method_names = _ordered_methods(distances_dict.keys())
     C, H_plus_1, N = next(iter(distances_dict.values())).shape
     horizons = np.arange(H_plus_1)
@@ -523,157 +380,12 @@ def plot_wasserstein_grid_comparison(distances_dict, country_names, variable_nam
     _save_fig(fig, save_name)
     plt.show()
 
-"""Effect of lambda on coefficient means"""
-
-def plot_conditional_mean_grid(methods, n_bins=10, title=None):
-    """Plot, for several methods, the conditional mean of a coefficient given
-    lambda, binned into quantiles of lambda, one line per country.
-
-    Parameters
-    ----------
-    methods : sequence of tuple
-        Each tuple is (name, lam, coef_by_country, country_names,
-        beta0_samples):
-        name : str
-            Method label, used as the subplot title.
-        lam : array_like of shape (n_samples,)
-            Posterior samples of lambda for this method.
-        coef_by_country : sequence of length C of array_like of shape (n_samples,)
-            Posterior samples of a single coefficient, per country.
-        country_names : sequence of length C of str
-            Country labels, used in the legend.
-        beta0_samples : array_like of shape (n_samples,) or None
-            Posterior samples of the corresponding beta_0 coefficient, or
-            None to skip plotting it.
-    n_bins : int, optional
-        Number of quantile bins of lambda to average within. Default is 10.
-    title : str or None, optional
-        Overall figure title. Default is None.
-
-    Returns
-    -------
-    fig : matplotlib.figure.Figure
-        The created figure.
-    axes : numpy.ndarray of matplotlib.axes.Axes
-        The created 2x2 grid of axes.
-    """
-    fig, axes = plt.subplots(2, 2, figsize=(10, 9), sharey=True)
-    handles, labels = None, None
-
-    for ax, (name, lam, coef_by_country, country_names, beta0_samples) in zip(axes.flat, methods):
-        for c, cname in enumerate(country_names):
-            bins = pd.qcut(lam, q=n_bins)
-            df = pd.DataFrame({"lam": lam, "coef": coef_by_country[c]})
-            grouped = df.groupby(bins, observed=True)
-            ax.plot(grouped["lam"].mean(), grouped["coef"].mean(), marker="o", label=cname)
-
-        if beta0_samples is not None:
-            bins = pd.qcut(lam, q=n_bins)
-            df = pd.DataFrame({"lam": lam, "coef": beta0_samples})
-            grouped = df.groupby(bins, observed=True)
-            ax.plot(grouped["lam"].mean(), grouped["coef"].mean(), marker="s",
-                     color="black", linestyle="--", label=r"$\beta_0$")
-
-        ax.set_xlabel(r"$\lambda$")
-        ax.set_ylabel("conditional mean")
-        ax.set_title(name)
-        if handles is None:
-            handles, labels = ax.get_legend_handles_labels()
-
-    if title:
-        fig.suptitle(title, y=0.98)
-
-    fig.legend(handles, labels, loc="lower center", ncol=len(labels), bbox_to_anchor=(0.5, 0.0))
-    fig.tight_layout(rect=[0, 0.06, 1, 0.94])
-    return fig, axes
-
-
-def plot_conditional_mean_by_seed(results_by_seed, k, n_bins=10):
-    """For each seed, plot the conditional mean of `beta_c[:, :, k]` (and the
-    matching `beta_0[k]`) given lambda, for every method, using
-    `plot_conditional_mean_grid`.
-
-    Parameters
-    ----------
-    results_by_seed : dict
-        Mapping from seed to a results dict containing, for each of "mfvi",
-        "ssvi_i", "ssvi_c", "gibbs", a sub-dict (keyed "samples" for VI
-        methods, "results" for "gibbs") with keys "beta_c" (array_like,
-        shape (n_samples, C, N*K)), "beta_0" (array_like, shape
-        (n_samples, N*K)), and "lam" (array_like, shape (n_samples,)); and
-        key "config" (object with attribute `country_names`).
-    k : int
-        Index into the flattened N*K coefficient vector to plot.
-    n_bins : int, optional
-        Number of quantile bins of lambda to average within. Default is 10.
-
-    Returns
-    -------
-    dict
-        Mapping from seed to the matplotlib.figure.Figure produced for that
-        seed.
-    """
-    figs = {}
-    for seed, results in results_by_seed.items():
-        arr = {
-            method: np.array(results[method]["samples" if method != "gibbs" else "results"]["beta_c"])
-            for method in ["mfvi", "ssvi_i", "ssvi_c", "gibbs"]
-        }
-        beta0 = {
-            method: np.array(results[method]["samples" if method != "gibbs" else "results"]["beta_0"])
-            for method in ["mfvi", "ssvi_i", "ssvi_c", "gibbs"]
-        }
-        lam = {
-            method: results[method]["samples" if method != "gibbs" else "results"]["lam"]
-            for method in ["mfvi", "ssvi_i", "ssvi_c", "gibbs"]
-        }
-        country_names = results["config"].country_names
-
-        methods = [
-            (name.upper().replace("_", "-"), lam[name],
-             [arr[name][:, c, k] for c in range(arr[name].shape[1])],
-             country_names, beta0[name][:, k])
-            for name in ["mfvi", "ssvi_i", "ssvi_c", "gibbs"]
-        ]
-
-        fig, axes = plot_conditional_mean_grid(
-            methods, n_bins=n_bins,
-            title=f"Conditional mean of beta_c[{k}] given λ, by country (seed {seed})"
-        )
-        figs[seed] = fig
-    return figs
-
-
-"""Comparison to true parameters"""
+### Comparison to true parameters ###
 
 def plot_lambda_intervals(results_by_seed, true_by_seed, methods, levels=(0.5, 0.8, 0.95), ax=None, save_name=None):
-    """Plot, per seed and method, credible intervals for lambda at several
-    levels alongside the true simulating value.
-
-    Parameters
-    ----------
-    results_by_seed : dict
-        Mapping from seed to a dict of method -> dict (keyed "results" for
-        "gibbs", "samples" otherwise) containing "lam" (array_like of
-        float).
-    true_by_seed : dict
-        Mapping from seed to a dict containing "lam" (float), the true
-        simulating value of lambda for that seed.
-    methods : sequence of str
-        Method names to include.
-    levels : sequence of float, optional
-        Central credible-interval levels to plot. Default is (0.5, 0.8, 0.95).
-    ax : matplotlib.axes.Axes or None, optional
-        Axes to draw on; a new figure and axes are created if None.
-    save_name : str or None, optional
-        If given, the figure is also saved as `Figures/{save_name}.pdf`
-        (the folder is created if needed). Default is None (no save).
-
-    Returns
-    -------
-    matplotlib.axes.Axes
-        The axes the intervals were drawn on.
-    """
+    """Plot, per seed and method, credible intervals for lambda at several nominal
+    levels alongside the true data generating value.
+    Saves to Figures/{save_name}.pdf if save_name is given."""
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 6))
     methods = _ordered_methods(methods)
@@ -720,34 +432,10 @@ def plot_lambda_intervals(results_by_seed, true_by_seed, methods, levels=(0.5, 0
     _save_fig(ax.figure, save_name)
     return ax
 
-"""Model Diagnostics"""
+### Model Diagnostics ###
 
 def plot_diagnostics(ssvi_i_trace, ssvi_c_trace, ssvi_i_ess, ssvi_c_ess, rhat, title_suffix=""):
-    """Plot ULA trace, ESS-across-iterations, and R-hat diagnostics for
-    SSVI-I and SSVI-C.
-
-    Parameters
-    ----------
-    ssvi_i_trace : array_like of shape (n_steps,)
-        log(lambda) ULA trace for SSVI-I (typically the last outer iteration).
-    ssvi_c_trace : array_like of shape (n_steps,)
-        log(lambda) ULA trace for SSVI-C (typically the last outer iteration).
-    ssvi_i_ess : sequence of float
-        Effective sample size at each CAVI iteration, for SSVI-I.
-    ssvi_c_ess : sequence of float
-        Effective sample size at each CAVI iteration, for SSVI-C.
-    rhat : array_like of shape (D,)
-        R-hat value for each scalar parameter component (e.g. from
-        `gibbs._compute_diagnostics`).
-    title_suffix : str, optional
-        Text appended to each subplot title. Default is "".
-
-    Returns
-    -------
-    None
-        Displays the matplotlib figure and prints an R-hat summary; nothing
-        is returned.
-    """
+    """Plot final ULA trace, and ESS-across-iterations for SSVI-I and SSVI-C, alongside R-hat diagnostics Gibbs sampler."""
     fig, axes = plt.subplots(1, 4, figsize=(19, 4))
 
     axes[0].plot(ssvi_i_trace)
@@ -776,27 +464,12 @@ def plot_diagnostics(ssvi_i_trace, ssvi_c_trace, ssvi_i_ess, ssvi_c_ess, rhat, t
     print(f"max R-hat: {rhat.max():.4f}, min R-hat: {rhat.min():.4f}, "
           f"# > 1.01: {(rhat > 1.01).sum()} / {len(rhat)}")
 
-"""lambda-beta0 Relationship"""
+### Relationship between lambda and beta0 ###
 
 def plot_lambda_beta0_correlation_scatter(gibbs_results, save_name=None):
-    """Scatter of Pearson correlations between lambda and each
+    """Scatter of correlations between lambda and each
     component of beta_0, from Gibbs posterior draws.
-
-    Parameters
-    ----------
-    gibbs_results : dict
-        Gibbs `post_burnin_samples`, must contain "lam" (array_like,
-        shape (n_draws,)) and "beta_0" (array_like, shape
-        (n_draws, N*K)).
-    save_name : str or None, optional
-        If given, the figure is also saved as `Figures/{save_name}.pdf`
-        (the folder is created if needed). Default is None (no save).
-
-    Returns
-    -------
-    None
-        Displays the matplotlib figure; nothing is returned.
-    """
+    Saves to Figures/{save_name}.pdf if save_name is given."""
     lam = np.asarray(gibbs_results["lam"])
     beta_0 = np.asarray(gibbs_results["beta_0"])
     corrs = np.array([np.corrcoef(lam, beta_0[:, k])[0, 1] for k in range(beta_0.shape[1])])

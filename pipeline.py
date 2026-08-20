@@ -19,35 +19,29 @@ METHOD_SLUGS = {"mfvi": "mfvi", "ssvi_i": "ssvii", "ssvi_c": "ssvic"}
 
 @dataclass
 class PipelineConfig:
-    """Configuration for one `run_pipeline` run: run identity, plot labels,
+    """Configuration for one `run_pipeline` call: run identity, plot labels,
     and per-method hyperparameters.
 
     Attributes
     ----------
     name : str
-        Run identifier, used as the cache file's stem
-        (`{cache_dir}/{name}.pkl`).
+        Run identifier and cache file stem (`{cache_dir}/{name}.pkl`).
     country_names : list of str
-        Country labels, in the same order as the C axis of the data.
+        Country labels in C-axis order.
     variable_names : list of str
-        Endogenous variable labels, in the same order as the N axis of the data.
-    sign_pattern : tuple of (int, int, float) triples, optional
-        Sign-identification pattern passed to `results.compute_irfs`. Default
-        is ``((2, 2, 1.0), (3, 2, -1.0), (2, 3, 1.0), (3, 3, 1.0))``.
+        Endogenous variable labels in N-axis order.
+    sign_pattern : tuple, optional
+        Sign-identification pattern for IRF computation.
     ssvi_i_kwargs : dict, optional
-        Keyword arguments forwarded to `ssvi_i.run_ssvi_i`. Default is
-        ``dict(n_steps=1000, s=0.1, n_burnin=100, epsilon=0.05)``.
+        Kwargs forwarded to `run_ssvi_i`.
     ssvi_c_kwargs : dict, optional
-        Keyword arguments forwarded to `ssvi_c.run_ssvi_c`. Default is
-        ``dict(n_steps=1000, s=0.9, n_burnin=100)``.
+        Kwargs forwarded to `run_ssvi_c`.
     gibbs_kwargs : dict, optional
-        Keyword arguments forwarded to `gibbs.run_gibbs`. Default is
-        ``dict(n_chains=4, n_steps=10000, n_burnin=2000)``.
-    n_draws : int, optional
-        Number of posterior draws used for IRF computation (per method).
-        Default is 10000.
+        Kwargs forwarded to `run_gibbs`.
+    n_samples : int, optional
+        Posterior draws per method. Default is 10000.
     H : int, optional
-        IRF horizon passed to `results.compute_irfs`. Default is 36.
+        IRF horizon. Default is 36.
     """
     name: str
     country_names: list
@@ -64,82 +58,34 @@ class PipelineConfig:
 def run_pipeline(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2,
                   config: PipelineConfig, Lambda=None, cache_dir="cache", force_recompute=False, seed=None):
     """Run the full estimation pipeline (MFVI, SSVI-I, SSVI-C, Gibbs) on one
-    dataset, compute comparison metrics (UQF, Faes accuracy, IRFs,
-    Wasserstein distance), and cache the results to disk.
+    dataset, compute comparison metrics, and cache results to disk.
 
     Parameters
     ----------
-    Y : numpy.ndarray of shape (C, T+L, N)
-        Raw endogenous panel data, including the L extra leading periods
-        needed to form lags.
-    W : numpy.ndarray of shape (T+L, N_w)
-        Raw exchangeable exogenous series, including the leading periods
-        needed to form lags.
-    Z1 : numpy.ndarray of shape (T+L, ...)
-        Raw first non-exchangeable exogenous series.
-    Z2 : numpy.ndarray of shape (T+L, ...)
-        Raw second non-exchangeable exogenous series.
-    C : int
-        Number of countries.
-    N : int
-        Number of endogenous variables.
-    N_w : int
-        Number of exogenous W variables.
-    T : int
-        Number of usable (post-lag) time periods.
-    K : int
-        Total number of regressors per equation.
-    Z_width : int
-        Total number of non-exchangeable regressors per equation.
-    L : int
-        Number of endogenous lags.
-    L_w : sequence of int
-        Lags of W included as regressors.
-    L_z1 : sequence of int
-        Lags of Z1 included as regressors.
-    L_z2 : sequence of int
-        Lags of Z2 included as regressors.
+    Y, W, Z1, Z2 : numpy.ndarray
+        Raw endogenous and exogenous panel data including leading lag periods.
+    C, N, T, K, Z_width, L : int
+        Model dimensions.
+    L_w, L_z1, L_z2 : sequence of int
+        Lags of W, Z1, Z2 included as regressors.
     config : PipelineConfig
-        Run configuration (name, labels, sign pattern, and per-method
-        hyperparameters).
+        Run configuration.
     Lambda : numpy.ndarray of shape (C, N*K, N*K) or None, optional
-        Pre-specified Minnesota-prior scale matrices, forwarded to
-        `data_prep.prep_data`. If None (default), built internally.
+        Pre-specified Minnesota-prior scale matrices. If None, built internally.
     cache_dir : str, optional
-        Directory holding the pickled results cache. Default is "cache".
+        Cache directory. Default is "cache".
     force_recompute : bool, optional
-        If True, ignore any existing cache file at
-        `{cache_dir}/{config.name}.pkl` and recompute (overwriting it).
-        Default is False.
-    seed : int, numpy.random.SeedSequence, or None, optional
-        Top-level seed controlling every stochastic stage of the pipeline
-        (Gibbs sampling, the SSVI-I/SSVI-C Langevin chains, posterior-sample
-        reconstruction, Gibbs thinning, and IRF sign-rotation search).
-        Independent child seeds are spawned from this value for each
-        stage, so the same `seed` reproduces the pipeline's full output
-        for identical inputs and `config`. If None (default), each stage
-        draws fresh, non-reproducible entropy. Note the on-disk cache is
-        keyed only by `config.name`, not by `seed` — reusing the same
-        `name` with a different `seed` returns the cached result unless
-        `force_recompute=True`.
+        Ignore existing cache and recompute. Default is False.
+    seed : int or None, optional
+        Top-level seed. Child seeds are spawned per stage for reproducibility.
+        Cache is keyed by config.name only, not seed. Default is None.
 
     Returns
     -------
     dict
-        Results dictionary with keys 'config' (PipelineConfig), 'C' (int),
-        'cov_true' (list of length C of numpy.ndarray, the Gibbs-derived
-        reference delta_c covariance per country), 'mfvi', 'ssvi_i', and
-        'ssvi_c' (each a dict as built by the nested `build_method_dict`,
-        with keys 'results', 'samples', 'uqf', 'faes', 'irfs',
-        'wasserstein', 'runtime' (float, wall-clock seconds for that
-        method's estimation step), and optionally 'elbo' and
-        'diagnostics'), 'gibbs' (dict with keys 'results' (thinned to
-        `config.n_samples` draws), 'diagnostics', 'irfs', and 'runtime'
-        (float)), and 'runtime_total' (float, the sum of the four methods'
-        runtimes). If a cache file already exists and `force_recompute` is
-        False, the cached dict is loaded and returned directly instead of
-        being recomputed (so `runtime`/`runtime_total` reflect whenever it
-        was originally computed, not the current call).
+        Keys: 'config', 'C', 'cov_true', 'mfvi', 'ssvi_i', 'ssvi_c', 'gibbs',
+        'runtime_total'. Each method dict contains 'results', 'samples', 'uqf',
+        'faes', 'irfs', 'wasserstein', 'runtime'.
     """
     cache_path = Path(cache_dir) / f"{config.name}.pkl"
     # return saved data if applicable
@@ -214,46 +160,30 @@ def run_pipeline(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2,
 
     # function for repeated construction of dictionaries across VI methods
     def build_method_dict(results_method, samples, cov, seed, elbo=None, diagnostics=None, runtime=None):
-        """Assemble one VI method's entry in the pipeline results dict:
-        posterior samples, UQF, Faes accuracy, IRFs, and Wasserstein
-        distance against the Gibbs reference.
+        """Assemble one VI method's entry in the pipeline results dict.
 
         Parameters
         ----------
         results_method : dict
-            Raw output params dict for this method (e.g. the `params` dict
-            returned by `mfvi.run_mfvi`, `ssvi_i.run_ssvi_i`, or
-            `ssvi_c.run_ssvi_c`).
+            Raw params dict for this method.
         samples : dict
-            Posterior samples dict for this method, as returned by
-            `results.sample_from_mfvi`, `results.sample_from_ssvi_i`, or
-            `results.sample_from_ssvi_c`.
+            Posterior samples for this method.
         cov : list of length C of numpy.ndarray
-            Per-country delta_c covariance estimate for this method, used to
-            compute the UQF against `cov_true`.
-        seed : int or numpy.random.SeedSequence
-            Seed passed to `results.compute_irfs` for this method's
-            sign-identification rotation sampling — a child seed spawned
-            from `run_pipeline`'s top-level `seed`.
+            Per-country delta_c covariance for UQF computation.
+        seed : int or SeedSequence
+            Seed for IRF sign-identification rotation.
         elbo : list of float or None, optional
-            ELBO trace for this method; stored under key "elbo" if given.
-            Default is None.
+            ELBO trace. Default is None.
         diagnostics : dict or None, optional
-            Convergence diagnostics for this method; stored under key
-            "diagnostics" if given. Default is None.
+            Convergence diagnostics. Default is None.
         runtime : float or None, optional
-            Wall-clock seconds this method's estimation step took (excluding
-            downstream metric computation); stored under key "runtime" if
-            given. Default is None.
+            Estimation wall-clock time in seconds. Default is None.
 
         Returns
         -------
         dict
-            Dictionary with keys 'results' (dict), 'samples' (dict), 'uqf'
-            (list of length C of float), 'faes' (dict), 'irfs'
-            (numpy.ndarray, shape (n_samples, C, H+1, N)), and 'wasserstein'
-            (numpy.ndarray, shape (C, H+1, N)); plus 'elbo', 'diagnostics',
-            and/or 'runtime' if the corresponding arguments were given.
+            Keys: 'results', 'samples', 'uqf', 'faes', 'irfs', 'wasserstein';
+            plus 'elbo', 'diagnostics', 'runtime' if given.
         """
         beta = np.array(samples["beta_c"])
         sigma = np.array(samples["Sigma_c"])
@@ -263,7 +193,7 @@ def run_pipeline(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2,
         )
         d = dict(
             results=results_method, samples=samples,
-            uqf=compute_uqf(cov_true, cov, C),
+            uqf=[UQF(cov_true[c], cov[c]) for c in range(C)],
             faes=compute_faes_scores(samples, gibbs_faes_arrays),
             irfs=irfs_method,
             wasserstein=compute_wasserstein_curve(irfs_gibbs, irfs_method),
@@ -315,30 +245,7 @@ def run_pipeline(Y, W, Z1, Z2, C, N, N_w, T, K, Z_width, L, L_w, L_z1, L_z2,
 
 
 def plot_pipeline_results(results, N, K, Z_width, pct=0.25):
-    """Produce every comparison plot (boxplots, IRFs, Wasserstein grid, UQF, MAE_corr)
-    for one run_pipeline result, plus runtime/iteration-count and lambda
-    dispersion-change tables, ending with convergence diagnostics.
-
-    Parameters
-    ----------
-    results : dict
-        Output of `run_pipeline` for a single dataset.
-    N : int
-        Number of endogenous variables.
-    K : int
-        Number of regressors per equation.
-    Z_width : int
-        Number of non-exchangeable regressors per equation.
-    pct : float, optional
-        Fraction defining the low/high lambda tails passed to
-        `results.dispersion_change_real_data`. Default is 0.25.
-
-    Returns
-    -------
-    None
-        Displays a sequence of matplotlib figures and printed/displayed
-        tables; nothing is returned.
-    """
+    """Produce all comparison plots and tables for one `run_pipeline` result."""
     config = results["config"]
     C = results["C"]
     methods = [("MFVI", "mfvi"), ("SSVI-I", "ssvi_i"), ("SSVI-C", "ssvi_c")]
@@ -423,43 +330,8 @@ def plot_pipeline_results(results, N, K, Z_width, pct=0.25):
     )
 
 def plot_pipeline_results_seed(results, true_params, N, K, Z_width, label="", scenario=None, pct=0.25):
-    """Produce every pooled-across-seeds comparison plot (accuracy, Wasserstein,
-    correlation MAE, UQF, coverage tables, lambda intervals) for a set of
-    `run_pipeline` results keyed by seed, plus mean-runtime and lambda
-    dispersion-change tables, ending with per-seed convergence diagnostics.
-
-    Parameters
-    ----------
-    results : dict
-        Mapping from seed to a single-seed results dict, each the output of
-        `run_pipeline`.
-    true_params : dict
-        Mapping from seed to the true simulating parameters for that seed
-        (e.g. the `true_params` dict returned by `simulate.simulate_data`).
-    N : int
-        Number of endogenous variables.
-    K : int
-        Number of regressors per equation.
-    Z_width : int
-        Number of non-exchangeable regressors per equation.
-    label : str, optional
-        Text included in printed headers and the lambda-interval plot
-        title. Default is "".
-    scenario : str or None, optional
-        Short filename slug for this scenario (e.g. "lowT", "highT",
-        "lowC", "highC"), used to name the saved figure PDFs as
-        `Figures/{name}-{scenario}.pdf`. If None (default), figures are
-        displayed but not saved.
-    pct : float, optional
-        Fraction defining the low/high lambda tails passed to
-        `results.dispersion_change_by_seed`. Default is 0.25.
-
-    Returns
-    -------
-    None
-        Displays a sequence of matplotlib figures and printed/displayed
-        tables; nothing is returned.
-    """
+    """Produce all pooled-across-seeds comparison plots and tables for a set of
+    simulation results."""
     config = results[list(results.keys())[0]]["config"]
     C = results[list(results.keys())[0]]["C"]
     method_pairs = [("MFVI", "mfvi"), ("SSVI-I", "ssvi_i"), ("SSVI-C", "ssvi_c")]
