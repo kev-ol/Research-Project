@@ -62,7 +62,7 @@ and reused unless explicitly recomputed.
   learning rate (`s`), which must be tuned. This learning rate scales the RMSProp-style
   adaptive step size. Values that work for the real dataset are not guaranteed to transfer
   to substantially different data scales (e.g. different $C$ or $T$) without retuning — check
-  the ESS and $\log(\lambda)$ trace diagnostics after any change to the data or model
+  the ESS and $\log\lambda$ trace diagnostics after any change to the data or model
   configuration. `Main.ipynb` sets `s` per scenario.
 - SSVI-I additionally exposes `epsilon`, the ELBO convergence tolerance, which may
   need adjustment for low sample sizes (the low-`T` simulation uses a looser value).
